@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мессенджер университета Almau</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#050507;--panel:#101014;--line:#23232b;--text:#f2f2f5;--mute:#8d8d9a;--acc:#d4ff3a;--acc2:#7b5cff;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 Manrope,system-ui,sans-serif}
+a{color:inherit}
+h1,h2,h3{font-family:Unbounded,Manrope,sans-serif;line-height:1.1;margin:0}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:rgba(5,5,7,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:8px;height:64px;overflow-x:auto}
+.logo{font-family:Unbounded;font-weight:800;font-size:15px;margin-right:auto;white-space:nowrap;text-decoration:none}
+.logo b{color:var(--acc)}
+.tab{padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--mute);white-space:nowrap;font-weight:500}
+.tab.on{background:var(--panel);color:var(--text);border:1px solid var(--line)}
+.btn{display:inline-block;background:var(--acc);color:#050507;font-weight:700;padding:12px 22px;border-radius:999px;text-decoration:none;white-space:nowrap}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn.sm{padding:7px 14px;font-size:13px;margin-top:12px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+section{padding:56px 0}
+.page{display:none}.page.on{display:block}
+/* hero */
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:64px 0 40px}
+.hero h1{font-size:clamp(34px,5.6vw,68px);font-weight:800;letter-spacing:-.02em}
+.hero p{color:var(--mute);font-size:18px;max-width:34em;margin:22px 0 28px}
+.chat{background:var(--panel);border:1px solid var(--line);border-radius:28px;padding:22px;min-height:380px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.chat:before{content:"";position:absolute;inset:-40% -40% auto auto;width:320px;height:320px;background:radial-gradient(var(--acc2),transparent 70%);opacity:.35}
+.chat .top{display:flex;justify-content:space-between;color:var(--mute);font-size:13px;border-bottom:1px solid var(--line);padding-bottom:12px;position:relative}
+.msg{max-width:78%;padding:10px 14px;border-radius:18px;font-size:15px;position:relative;opacity:0;transform:translateY(8px);animation:in .4s forwards}
+.msg.l{background:#1c1c24;border-bottom-left-radius:4px}
+.msg.r{background:var(--acc);color:#050507;align-self:flex-end;border-bottom-right-radius:4px}
+.msg.sys{align-self:center;background:transparent;border:1px dashed var(--line);color:var(--mute);font-size:13px}
+@keyframes in{to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.msg{animation:none;opacity:1;transform:none}}
+/* sections */
+.head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:26px;flex-wrap:wrap}
+.head h2{font-size:clamp(26px,3.4vw,40px)}
+.head p{color:var(--mute);margin:8px 0 0;max-width:40em}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.step{border:1px solid var(--line);border-radius:22px;padding:22px;background:var(--panel)}
+.step span{font-family:Unbounded;color:var(--acc);font-size:28px}
+.step h3{font-size:17px;margin:14px 0 8px}
+.step p{color:var(--mute);margin:0;font-size:15px}
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:22px;overflow:hidden}
+.feat div{background:var(--bg);padding:26px}
+.feat h3{font-size:16px;margin-bottom:8px}.feat p{color:var(--mute);margin:0;font-size:15px}
+.feat .new{color:var(--acc);font-size:11px;font-family:Manrope;font-weight:700;border:1px solid var(--acc);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.filters button{background:var(--panel);color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font:500 14px Manrope;cursor:pointer}
+.filters button.on{background:var(--text);color:var(--bg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.tile{position:relative;border-radius:22px;overflow:hidden;min-height:320px;display:flex;flex-direction:column;justify-content:flex-end;padding:20px;border:1px solid var(--line);isolation:isolate}
+.tile .art{position:absolute;inset:0;z-index:-1}
+.tile .art:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 25%,rgba(5,5,7,.92) 78%)}
+.tile .glyph{position:absolute;top:16px;left:18px;font-size:44px}
+.tile .ig{position:absolute;top:18px;right:18px;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);font-size:12px;padding:5px 10px;border-radius:999px;text-decoration:none}
+.tile h3{font-size:20px}
+.tile p{color:#c8c8d2;font-size:14px;margin:8px 0 12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips span{font-size:12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:3px 10px;color:#dcdce4}
+.tile.wide{grid-column:span 2}
+.ev .date{font-family:Unbounded;font-size:13px;color:var(--acc);margin-bottom:8px}
+.ev .who{font-size:13px;color:var(--mute)}
+.ev .btn{align-self:flex-start}
+.empty{color:var(--mute);border:1px dashed var(--line);border-radius:22px;padding:28px;text-align:center}
+.cta{border-radius:28px;padding:48px 28px;text-align:center;background:radial-gradient(circle at 30% 0,rgba(123,92,255,.45),transparent 60%),var(--panel);border:1px solid var(--line)}
+.cta h2{font-size:clamp(26px,3.6vw,44px);margin-bottom:14px}.cta p{color:var(--mute);margin:0 0 26px}
+footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding:28px 0 40px}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.feat{grid-template-columns:1fr}.tile.wide{grid-column:auto}}
+@media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{display:none}}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+ <a href="#home" class="logo">almau<b>.chat</b></a>
+ <a class="tab" href="#home" data-p="home">О проекте</a>
+ <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
+ <a class="tab" href="#events" data-p="events">Ивенты</a>
+ <a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a>
+</div></nav>
+
+<main class="wrap">
+<!-- HOME -->
+<div class="page" id="p-home">
+ <div class="hero">
+  <div>
+   <h1>Пиши первым. Никто не узнает, кто ты.</h1>
+   <p>Мессенджер университета Almau — анонимный Telegram-бот для студентов. Одна кнопка, и ты в разговоре с новым человеком с похожими интересами. Захочешь познакомиться ближе — покажи вуз и курс или отправь соцсети командой /give.</p>
+   <div class="actions">
+    <a class="btn" data-bot href="#" target="_blank" rel="noopener">Начать общение в Telegram</a>
+    <a class="btn ghost" href="#events">Найти компанию на ивент</a>
+   </div>
+  </div>
+  <div class="chat" aria-label="Пример анонимного диалога">
+   <div class="top"><span>Анонимный собеседник</span><span>● онлайн</span></div>
+   <div class="msg sys" style="animation-delay:.2s">Собеседник найден · вы оба идёте на Acoustic Evening</div>
+   <div class="msg l" style="animation-delay:.8s">привет) ты тоже первый раз на акустике?</div>
+   <div class="msg r" style="animation-delay:1.6s">да, одной идти было стрёмно ахах</div>
+   <div class="msg l" style="animation-delay:2.4s">давай встретимся у входа в 18:50?</div>
+   <div class="msg sys" style="animation-delay:3.2s">🎓 Собеседник раскрылся: AlmaU, 2 курс</div>
+   <div class="msg r" style="animation-delay:4s">/give</div>
+   <div class="msg sys" style="animation-delay:4.6s">📱 Контакты отправлены собеседнику</div>
+  </div>
+ </div>
+
+ <section>
+  <div class="head"><div><h2>Как это работает</h2><p>От запуска бота до первого сообщения — меньше минуты.</p></div></div>
+  <div class="steps">
+   <div class="step"><span>1</span><h3>Запусти бота</h3><p>Нажми «Старт» в Telegram. Никаких паролей и анкет.</p></div>
+   <div class="step"><span>2</span><h3>Вуз, курс, интересы</h3><p>Вуз и курс увидят, только если ты сам решишь раскрыться. По интересам подберём собеседника.</p></div>
+   <div class="step"><span>3</span><h3>Найди собеседника</h3><p>Бот соединит тебя со свободным студентом — сначала с тем, у кого общие темы.</p></div>
+   <div class="step"><span>4</span><h3>Раскройся, если хочешь</h3><p>Кнопка покажет вуз и курс, а <code>/give</code> отправит твои соцсети.</p></div>
+  </div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Почему здесь проще начать разговор</h2></div></div>
+  <div class="feat">
+   <div><h3>Твоё имя скрыто</h3><p>Собеседник не видит имя, @username и номер телефона. Сообщения идут через бота.</p></div>
+   <div><h3>Общие интересы<span class="new">NEW</span></h3><p>Отметь, что тебе нравится, и бот первым делом поищет человека с теми же темами.</p></div>
+   <div><h3>Компания на ивент<span class="new">NEW</span></h3><p>Отметь «Иду» на ивенте и пообщайся с тем, кто тоже идёт. Больше не придётся идти одному.</p></div>
+   <div><h3>Контроль у тебя</h3><p>Раскрыть вуз, курс или соцсети можно только по твоему нажатию.</p></div>
+   <div><h3>Безопасно</h3><p>Кнопка «Пожаловаться» завершает диалог. После нескольких жалоб нарушитель блокируется автоматически.</p></div>
+   <div><h3>Любой формат</h3><p>Текст, голосовые, стикеры, фото — всё пересылается анонимно.</p></div>
+  </div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Правила</h2><p>Уважай собеседника. Без оскорблений, травли, спама и рекламы. Не публикуй чужие личные данные и откровенный контент. За нарушения — блокировка.</p></div></div>
+ </section>
+
+ <section><div class="cta"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a></div></section>
+</div>
+
+<!-- CLUBS -->
+<div class="page" id="p-clubs">
+ <section>
+  <div class="head"><div><h2>Студенческие клубы AlmaU</h2><p>Найди своих: от сцены и спорта до гор и искусства. Нажми на Instagram клуба, чтобы вступить.</p></div>
+   <div class="filters" id="cf"></div></div>
+  <div class="grid" id="clubs"></div>
+ </section>
+</div>
+
+<!-- EVENTS -->
+<div class="page" id="p-events">
+ <section>
+  <div class="head"><div><h2>Ивенты и встречи со спикерами</h2><p>Не с кем пойти? Нажми «Найти компанию» — бот анонимно соединит тебя с тем, кто тоже идёт.</p></div>
+   <div class="filters" id="ef"></div></div>
+  <div class="grid" id="events"></div>
+ </section>
+</div>
+</main>
+
+<footer><div class="wrap">Мессенджер университета Almau — студенческий проект. Не является официальным ресурсом Almaty Management University.</div></footer>
+
+<script>
+// Username бота без @. Тот же, что BOT_USERNAME в .env.
+const BOT = "almau_messenger_bot";
+const botLink = payload => `https://t.me/${BOT}` + (payload ? `?start=${payload}` : "");
+document.querySelectorAll("[data-bot]").forEach(a => a.href = botLink());
+
+const G = ([a, b]) => `radial-gradient(circle at 70% 20%,${a},transparent 60%),linear-gradient(160deg,${b},#050507)`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function filters(el, list, render) {
+  const tags = ["Все", ...new Set(list.map(x => x.category))];
+  el.innerHTML = tags.map((t, i) => `<button class="${i ? "" : "on"}" data-t="${esc(t)}">${esc(t)}</button>`).join("");
+  el.onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    el.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    render(b.dataset.t);
+  };
+}
+
+function clubTile(c) {
+  return `<article class="tile ${c.wide ? "wide" : ""}"><div class="art" style="background:${G(c.colors)}"></div><div class="glyph">${c.emoji}</div>
+    ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
+    <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
+    <div class="chips">${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div></article>`;
+}
+
+function eventTile(e) {
+  return `<article class="tile ev ${e.wide ? "wide" : ""}"><div class="art" style="background:${G(e.colors)}"></div><div class="glyph">${e.emoji}</div>
+    <div class="date">${esc(e.date)}</div><h3>${esc(e.title)}</h3><p>${esc(e.description)}</p><div class="who">${esc(e.host)}</div>
+    <a class="btn sm" href="${botLink("event_" + encodeURIComponent(e.id))}" target="_blank" rel="noopener">👥 Найти компанию</a></article>`;
+}
+
+function mount(listId, filterId, items, tile) {
+  const render = (t = "Все") => {
+    document.getElementById(listId).innerHTML = items.filter(x => t === "Все" || x.category === t).map(tile).join("");
+  };
+  filters(document.getElementById(filterId), items, render);
+  render();
+}
+
+// Клубы и ивенты лежат в data/*.json — эти же файлы читает Telegram-бот
+async function load() {
+  try {
+    const [clubs, events] = await Promise.all(["data/clubs.json", "data/events.json"].map(u => fetch(u).then(r => {
+      if (!r.ok) throw new Error(u);
+      return r.json();
+    })));
+    mount("clubs", "cf", clubs, clubTile);
+    mount("events", "ef", events, eventTile);
+  } catch (err) {
+    const msg = `<div class="empty">Не удалось загрузить данные. Откройте сайт через веб-сервер (см. README), а не как файл.</div>`;
+    document.getElementById("clubs").innerHTML = msg;
+    document.getElementById("events").innerHTML = msg;
+  }
+}
+
+function route() {
+  const p = (location.hash || "#home").slice(1);
+  const id = ["home", "clubs", "events"].includes(p) ? p : "home";
+  document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
+  window.scrollTo(0, 0);
+}
+addEventListener("hashchange", route);
+route();
+load();
+</script>
+</body>
+</html>
