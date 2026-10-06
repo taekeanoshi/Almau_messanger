@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Мессенджер университета Almau</title>
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -17,7 +19,8 @@ h1,h2,h3{font-family:Unbounded,Manrope,sans-serif;line-height:1.1;margin:0}
 .wrap{max-width:1240px;margin:0 auto;padding:0 20px}
 nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:rgba(5,5,7,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 nav .wrap{display:flex;align-items:center;gap:8px;height:64px;overflow-x:auto}
-.logo{font-family:Unbounded;font-weight:800;font-size:15px;margin-right:auto;white-space:nowrap;text-decoration:none}
+.logo{display:flex;align-items:center;gap:10px;font-family:Unbounded;font-weight:800;font-size:15px;margin-right:auto;white-space:nowrap;text-decoration:none}
+.logo img{width:36px;height:36px;border-radius:50%;flex:none}
 .logo b{color:var(--acc)}
 .tab{padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--mute);white-space:nowrap;font-weight:500}
 .tab.on{background:var(--panel);color:var(--text);border:1px solid var(--line)}
@@ -63,6 +66,10 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .tile .art{position:absolute;inset:0;z-index:-1}
 .tile .art:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 25%,rgba(5,5,7,.92) 78%)}
 .tile .glyph{position:absolute;top:16px;left:18px;font-size:44px}
+.tile .badge{position:absolute;top:16px;left:18px;width:76px;height:76px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.2);box-shadow:0 8px 24px rgba(0,0,0,.45);background:#fff}
+.ev .badge{width:56px;height:56px}
+.tile{padding-top:112px}.tile.ev{padding-top:92px}
+.cta .mark{width:88px;height:88px;border-radius:50%;margin-bottom:18px}
 .tile .ig{position:absolute;top:18px;right:18px;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);font-size:12px;padding:5px 10px;border-radius:999px;text-decoration:none}
 .tile h3{font-size:20px}
 .tile p{color:#c8c8d2;font-size:14px;margin:8px 0 12px}
@@ -82,7 +89,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 </head>
 <body>
 <nav><div class="wrap">
- <a href="#home" class="logo">almau<b>.chat</b></a>
+ <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>almau<b>.chat</b></span></a>
  <a class="tab" href="#home" data-p="home">О проекте</a>
  <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
  <a class="tab" href="#events" data-p="events">Ивенты</a>
@@ -139,7 +146,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <div class="head"><div><h2>Правила</h2><p>Уважай собеседника. Без оскорблений, травли, спама и рекламы. Не публикуй чужие личные данные и откровенный контент. За нарушения — блокировка.</p></div></div>
  </section>
 
- <section><div class="cta"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a></div></section>
+ <section><div class="cta"><img class="mark" src="img/logo.png" alt="Логотип Almau Messenger"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a></div></section>
 </div>
 
 <!-- CLUBS -->
@@ -182,15 +189,21 @@ function filters(el, list, render) {
   };
 }
 
+// Логотип, если он есть, иначе эмодзи
+const badge = (logo, emoji, name) => logo
+  ? `<img class="badge" src="${esc(logo)}" alt="Логотип ${esc(name)}" loading="lazy">`
+  : `<div class="glyph">${emoji}</div>`;
+let clubLogos = {};  // id клуба -> путь к логотипу, для карточек ивентов
+
 function clubTile(c) {
-  return `<article class="tile ${c.wide ? "wide" : ""}"><div class="art" style="background:${G(c.colors)}"></div><div class="glyph">${c.emoji}</div>
+  return `<article class="tile ${c.wide ? "wide" : ""}"><div class="art" style="background:${G(c.colors)}"></div>${badge(c.logo, c.emoji, c.name)}
     ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
     <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
     <div class="chips">${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div></article>`;
 }
 
 function eventTile(e) {
-  return `<article class="tile ev ${e.wide ? "wide" : ""}"><div class="art" style="background:${G(e.colors)}"></div><div class="glyph">${e.emoji}</div>
+  return `<article class="tile ev ${e.wide ? "wide" : ""}"><div class="art" style="background:${G(e.colors)}"></div>${badge(clubLogos[e.club], e.emoji, e.host)}
     <div class="date">${esc(e.date)}</div><h3>${esc(e.title)}</h3><p>${esc(e.description)}</p><div class="who">${esc(e.host)}</div>
     <a class="btn sm" href="${botLink("event_" + encodeURIComponent(e.id))}" target="_blank" rel="noopener">👥 Найти компанию</a></article>`;
 }
@@ -210,6 +223,7 @@ async function load() {
       if (!r.ok) throw new Error(u);
       return r.json();
     })));
+    clubLogos = Object.fromEntries(clubs.filter(c => c.logo).map(c => [c.id, c.logo]));
     mount("clubs", "cf", clubs, clubTile);
     mount("events", "ef", events, eventTile);
   } catch (err) {
