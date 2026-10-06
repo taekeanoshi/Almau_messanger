@@ -42,6 +42,15 @@ cp .env.example .env        # вставить BOT_TOKEN от @BotFather и св
 python -m bot.main
 ```
 
+## Хостинг бота на Railway
+
+1. [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo** → `Almau_messanger`.
+2. **Variables**: `BOT_TOKEN`, `ADMIN_IDS`, `BOT_USERNAME`.
+3. Команда запуска уже задана в `railway.json`: `python -m bot.main`.
+
+База SQLite лежит в контейнере и сбрасывается при каждом новом деплое. Для демо это не страшно,
+для постоянной работы подключите к сервису Volume и задайте `DB_PATH=/data/almau.db`.
+
 ## Тесты
 
 ```bash
