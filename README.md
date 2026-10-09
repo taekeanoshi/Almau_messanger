@@ -26,10 +26,9 @@
 |-----|--------|
 | Сайт | _вставьте ссылку на Vercel после деплоя_ |
 | Бот | https://t.me/almau_messenger_bot |
-| API (бэкенд) | _вставьте домен Railway, например `https://almau-api.up.railway.app`_ |
+| API (бэкенд) | https://almaumessanger-production.up.railway.app |
 
-После деплоя обновите ссылки в этой таблице и константу `API` в `site/index.html` (сейчас там
-плейсхолдер `almau-api.up.railway.app`) — без этого сайт не найдёт бэкенд.
+После деплоя сайта на Vercel обновите ссылку на сайт в этой таблице.
 
 ## Структура
 
