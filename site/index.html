@@ -82,6 +82,16 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .empty{color:var(--mute);border:1px dashed var(--line);border-radius:22px;padding:28px;text-align:center}
 .cta{border-radius:28px;padding:48px 28px;text-align:center;background:radial-gradient(circle at 30% 0,rgba(123,92,255,.45),transparent 60%),var(--panel);border:1px solid var(--line)}
 .cta h2{font-size:clamp(26px,3.6vw,44px);margin-bottom:14px}.cta p{color:var(--mute);margin:0 0 26px}
+.stats-bar{display:flex;gap:32px;flex-wrap:wrap;margin:28px 0 0}
+.stats-bar div{display:flex;flex-direction:column;gap:4px}
+.stats-bar b{font-family:Unbounded;font-size:30px;color:var(--acc)}
+.stats-bar span{color:var(--mute);font-size:13px}
+.lead{display:grid;gap:12px;max-width:480px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px}
+.lead input,.lead textarea{background:#0b0b0f;border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--text);font:15px Manrope;resize:vertical}
+.lead input:focus,.lead textarea:focus{outline:2px solid var(--acc);outline-offset:1px}
+.lead textarea{min-height:90px}
+.lead .btn{justify-self:start;border:none;cursor:pointer;font:700 15px Manrope}
+.lead-status{color:var(--mute);font-size:14px;margin:0;min-height:1.2em}
 footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding:28px 0 40px}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.feat{grid-template-columns:1fr}.tile.wide{grid-column:auto}}
 @media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{display:none}}
@@ -107,6 +117,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
     <a class="btn" data-bot href="#" target="_blank" rel="noopener">Начать общение в Telegram</a>
     <a class="btn ghost" href="#events">Найти компанию на ивент</a>
    </div>
+   <div class="stats-bar" id="stats" aria-live="polite"></div>
   </div>
   <div class="chat" aria-label="Пример анонимного диалога">
    <div class="top"><span>Анонимный собеседник</span><span>● онлайн</span></div>
@@ -146,6 +157,17 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <div class="head"><div><h2>Правила</h2><p>Уважай собеседника. Без оскорблений, травли, спама и рекламы. Не публикуй чужие личные данные и откровенный контент. За нарушения — блокировка.</p></div></div>
  </section>
 
+ <section>
+  <div class="head"><div><h2>Хотите такое у себя?</h2><p>Оставьте заявку — расскажем, как подключить анонимный чат и афишу ивентов для вашего вуза или клуба.</p></div></div>
+  <form class="lead" id="lead-form">
+   <input name="name" placeholder="Имя" required maxlength="80" autocomplete="name">
+   <input name="contact" placeholder="Telegram или почта" required maxlength="80" autocomplete="email">
+   <textarea name="message" placeholder="Коротко, что интересует" maxlength="300"></textarea>
+   <button class="btn" type="submit">Отправить заявку</button>
+   <p class="lead-status" id="lead-status"></p>
+  </form>
+ </section>
+
  <section><div class="cta"><img class="mark" src="img/logo.png" alt="Логотип Almau Messenger"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a></div></section>
 </div>
 
@@ -176,6 +198,10 @@ const BOT = "almau_messenger_bot";
 const botLink = payload => `https://t.me/${BOT}` + (payload ? `?start=${payload}` : "");
 document.querySelectorAll("[data-bot]").forEach(a => a.href = botLink());
 
+// Адрес бэкенда (bot/api.py), задеплоенного вместе с ботом на Railway.
+// После деплоя заменить на свой домен вида https://<проект>.up.railway.app — см. README → раздел «API».
+const API = "https://almau-messenger-production.up.railway.app";
+
 const G = ([a, b]) => `radial-gradient(circle at 70% 20%,${a},transparent 60%),linear-gradient(160deg,${b},#050507)`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -203,9 +229,65 @@ function clubTile(c) {
 }
 
 function eventTile(e) {
-  return `<article class="tile ev ${e.wide ? "wide" : ""}"><div class="art" style="background:${G(e.colors)}"></div>${badge(clubLogos[e.club], e.emoji, e.host)}
+  return `<article class="tile ev ${e.wide ? "wide" : ""}" data-id="${esc(e.id)}"><div class="art" style="background:${G(e.colors)}"></div>${badge(clubLogos[e.club], e.emoji, e.host)}
     <div class="date">${esc(e.date)}</div><h3>${esc(e.title)}</h3><p>${esc(e.description)}</p><div class="who">${esc(e.host)}</div>
     <a class="btn sm" href="${botLink("event_" + encodeURIComponent(e.id))}" target="_blank" rel="noopener">👥 Найти компанию</a></article>`;
+}
+
+// Живые цифры с бэкенда (bot/api.py → /api/stats). Если API недоступен, блок просто скрывается —
+// сайт на статичных данных остаётся рабочим.
+async function loadStats() {
+  const el = document.getElementById("stats");
+  if (!el) return;
+  try {
+    const r = await fetch(API + "/api/stats");
+    if (!r.ok) throw new Error("stats");
+    const s = await r.json();
+    el.innerHTML = `
+      <div><b>${s.users}</b><span>студентов в боте</span></div>
+      <div><b>${s.dialogs_total}</b><span>анонимных диалогов</span></div>
+      <div><b>${s.event_dialogs}</b><span>нашли компанию на ивент</span></div>`;
+  } catch {
+    el.remove();
+  }
+}
+
+// Дополняет уже отрисованные карточки ивентов количеством «Иду» из БД бота (/api/events).
+async function enhanceEventsWithGoing() {
+  try {
+    const r = await fetch(API + "/api/events");
+    if (!r.ok) throw new Error("events");
+    const live = await r.json();
+    const goingById = Object.fromEntries(live.map(e => [e.id, e.going]));
+    document.querySelectorAll("#events .tile.ev").forEach(tile => {
+      const n = goingById[tile.dataset.id];
+      const who = tile.querySelector(".who");
+      if (n != null && who) who.textContent += ` · идут: ${n}`;
+    });
+  } catch { /* бэкенд недоступен — карточки остаются как есть */ }
+}
+
+function initLeadForm() {
+  const form = document.getElementById("lead-form");
+  const status = document.getElementById("lead-status");
+  if (!form) return;
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    status.textContent = "Отправляем…";
+    const payload = Object.fromEntries(new FormData(form).entries());
+    try {
+      const r = await fetch(API + "/api/leads", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error("lead");
+      status.textContent = "Спасибо! Мы скоро свяжемся с вами.";
+      form.reset();
+    } catch {
+      status.textContent = "Не получилось отправить. Попробуйте ещё раз чуть позже.";
+    }
+  });
 }
 
 function mount(listId, filterId, items, tile) {
@@ -226,6 +308,7 @@ async function load() {
     clubLogos = Object.fromEntries(clubs.filter(c => c.logo).map(c => [c.id, c.logo]));
     mount("clubs", "cf", clubs, clubTile);
     mount("events", "ef", events, eventTile);
+    enhanceEventsWithGoing();
   } catch (err) {
     const msg = `<div class="empty">Не удалось загрузить данные. Откройте сайт через веб-сервер (см. README), а не как файл.</div>`;
     document.getElementById("clubs").innerHTML = msg;
@@ -243,6 +326,8 @@ function route() {
 addEventListener("hashchange", route);
 route();
 load();
+loadStats();
+initLeadForm();
 </script>
 </body>
 </html>

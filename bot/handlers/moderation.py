@@ -96,5 +96,20 @@ async def on_stats(message: Message, db: Database, mm: Matchmaker) -> None:
         f"Диалогов всего: {s['dialogs_total']}, сегодня: {s['dialogs_today']}\n"
         f"Из них через ивенты: {s['event_dialogs']}\n"
         f"Жалоб: {s['reports']}\n"
+        f"Заявок с сайта: {s['leads']}\n"
         f"Сейчас общаются: {mm.active_pairs} пар, в поиске: {mm.waiting_count}"
     )
+
+
+@router.message(Command("leads"), IsAdmin())
+async def on_leads(message: Message, db: Database) -> None:
+    rows = db.recent_leads(10)
+    if not rows:
+        await message.answer("Заявок с сайта пока нет.")
+        return
+    lines = ["📝 <b>Заявки с сайта</b> (последние 10)"]
+    for r in rows:
+        extra = f" · ивент {r['event_id']}" if r["event_id"] else ""
+        text = f" — {r['message']}" if r["message"] else ""
+        lines.append(f"{r['created_at']} · {r['name']} ({r['contact']}){extra}{text}")
+    await message.answer("\n".join(lines))

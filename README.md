@@ -10,27 +10,45 @@
 - **Модерация.** Жалобы приходят админам. После N жалоб от разных людей нарушитель блокируется автоматически.
   Для админов есть команды `/stats`, `/ban`, `/unban`.
 
+**Новое в RK1 — бэкенд и хостинг:**
+- **Веб-API** (`bot/api.py`): сайт больше не просто статика — он получает данные клубов/ивентов
+  и живую статистику с сервера, а форма заявки реально сохраняет данные в БД. См. раздел [API](#api).
+- **Хостинг.** Бот и API задеплоены на Railway одним сервисом и работают без локально запущенного кода.
+  Живые ссылки — в разделе [Живой продукт](#живой-продукт).
+
 Кто за что отвечает и как устроен код: [docs/TEAM.md](docs/TEAM.md).
+
+## Живой продукт
+
+| Что | Ссылка |
+|-----|--------|
+| Сайт | _вставьте ссылку на Vercel после деплоя_ |
+| Бот | https://t.me/almau_messenger_bot |
+| API (бэкенд) | _вставьте домен Railway, например `https://almau-messenger-production.up.railway.app`_ |
+
+После деплоя обновите ссылки в этой таблице и константу `API` в `site/index.html` (сейчас там
+плейсхолдер `almau-messenger-production.up.railway.app`) — без этого сайт не найдёт бэкенд.
 
 ## Структура
 
 ```
 bot/
-  main.py            точка входа, сборка диспетчера, фоновый подбор пар      — Дияр
-  config.py          настройки из .env                                       — Дияр
+  main.py            точка входа: запускает бота и веб-API в одном процессе  — Дияр, + RK1
+  config.py          настройки из .env                                       — Дияр, + RK1 (PORT, CORS_ORIGIN)
   matchmaking.py     очередь поиска, подбор по интересам и ивентам          — Дияр
   keyboards.py       кнопки меню и диалога                                   — Дияр
   handlers/chat.py   поиск, пересылка сообщений, Следующий/Стоп, /give       — Дияр
-  db.py              SQLite: профили, жалобы, баны, статистика, «Иду»        — Абулхаир
+  db.py              SQLite: профили, жалобы, баны, статистика, «Иду»        — Абулхаир, + RK1 (заявки с сайта)
   handlers/profile.py   регистрация и профиль (вуз, курс, интересы, соцсети) — Абулхаир
-  handlers/moderation.py  жалобы, автобан, /stats /ban /unban                — Абулхаир
+  handlers/moderation.py  жалобы, автобан, /stats /ban /unban                — Абулхаир, + RK1 (/leads)
+  api.py             веб-API для сайта: /api/clubs, /api/events, /api/leads, /api/stats — RK1
   content.py         загрузка клубов и ивентов из site/data                  — Хамид
   handlers/events.py афиша, «Иду», «Найти компанию», /clubs                  — Хамид
 site/
-  index.html         сайт (О проекте, Клубы, Ивенты)                         — Хамид
+  index.html         сайт (О проекте, Клубы, Ивенты)                         — Хамид, + RK1 (форма заявки, статистика)
   data/clubs.json    клубы — общие для сайта и бота                          — Хамид
   data/events.json   ивенты — общие для сайта и бота                         — Хамид
-tests/               тесты всех частей (pytest)
+tests/               тесты всех частей, включая API (pytest)
 ```
 
 ## Запуск бота
@@ -42,14 +60,47 @@ cp .env.example .env        # вставить BOT_TOKEN от @BotFather и св
 python -m bot.main
 ```
 
-## Хостинг бота на Railway
+## Хостинг бота и API на Railway
+
+Бот (long polling) и веб-API (`bot/api.py`) запускаются одним процессом (`python -m bot.main`),
+поэтому для обоих достаточно одного сервиса на Railway.
 
 1. [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo** → `Almau_messanger`.
-2. **Variables**: `BOT_TOKEN`, `ADMIN_IDS`, `BOT_USERNAME`.
-3. Команда запуска уже задана в `railway.json`: `python -m bot.main`.
+2. **Variables**: `BOT_TOKEN`, `ADMIN_IDS`, `BOT_USERNAME`. Опционально `CORS_ORIGIN` — домен
+   вашего сайта на Vercel (например `https://almau.vercel.app`); для защиты можно оставить `*`.
+3. Команда запуска уже задана в `railway.json`: `python -m bot.main`. Там же настроен healthcheck
+   на `/health` — по нему Railway видит, что сервис жив.
+4. **Settings → Networking → Generate Domain** — без этого шага у API не будет публичного адреса,
+   и сайт не сможет к нему достучаться. Railway сам передаёт порт через `$PORT`, его подставлять не нужно.
+5. Скопируйте выданный домен (вида `https://<проект>.up.railway.app`) в константу `API`
+   в `site/index.html` и в таблицу [Живой продукт](#живой-продукт) выше.
 
 База SQLite лежит в контейнере и сбрасывается при каждом новом деплое. Для демо это не страшно,
 для постоянной работы подключите к сервису Volume и задайте `DB_PATH=/data/almau.db`.
+
+## API
+
+Эндпоинты `bot/api.py`, доступны по адресу из константы `API` в `site/index.html`:
+
+| Метод | Путь | Что делает |
+|-------|------|------------|
+| GET | `/health` | проверка живости сервиса (используется Railway healthcheck) |
+| GET | `/api/clubs` | список клубов из `content.py` |
+| GET | `/api/events` | список ивентов + живое число «Иду» из БД |
+| GET | `/api/events/{id}` | один ивент, 404 если не найден |
+| GET | `/api/stats` | публичная статистика: пользователи, диалоги, заявки |
+| POST | `/api/leads` | сохраняет заявку с формы сайта (`name`, `contact`, `message`, опц. `event_id`) в БД и уведомляет админов в Telegram |
+
+Проверить локально после `python -m bot.main`:
+
+```bash
+curl http://localhost:8080/api/stats
+curl -X POST http://localhost:8080/api/leads \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Аян","contact":"@ayan","message":"Хочу демо"}'
+```
+
+Посмотреть сохранённые заявки может админ бота командой `/leads`.
 
 ## Тесты
 
@@ -70,4 +121,7 @@ cd site && python -m http.server 8000   # открыть http://localhost:8000
 ```
 
 На Vercel в настройках проекта укажите **Root Directory = `site`**.
-В `site/index.html` константа `BOT` должна совпадать с username бота.
+В `site/index.html` константа `BOT` должна совпадать с username бота, а константа `API` —
+с доменом задеплоенного бэкенда на Railway (см. раздел «Хостинг бота и API на Railway»).
+Если `API` недоступен, сайт не падает: статистика и живой счётчик «Иду» просто не показываются,
+а клубы/ивенты как и раньше читаются из `data/*.json`.

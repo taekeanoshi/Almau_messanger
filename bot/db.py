@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS event_going (
     event_id    TEXT NOT NULL,
     PRIMARY KEY (user_id, event_id)
 );
+CREATE TABLE IF NOT EXISTS site_leads (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    contact     TEXT NOT NULL,
+    message     TEXT NOT NULL DEFAULT '',
+    event_id    TEXT,
+    created_at  TEXT NOT NULL
+);
 """
 
 
@@ -135,6 +143,7 @@ class Database:
             "dialogs_today": q("SELECT COUNT(*) FROM dialogs WHERE started_at >= ?", today),
             "event_dialogs": q("SELECT COUNT(*) FROM dialogs WHERE event_id IS NOT NULL"),
             "reports": q("SELECT COUNT(*) FROM reports"),
+            "leads": q("SELECT COUNT(*) FROM site_leads"),
         }
 
     # ---------- ивенты ----------
@@ -156,3 +165,21 @@ class Database:
         return self.conn.execute(
             "SELECT COUNT(*) FROM event_going WHERE event_id = ?", (event_id,)
         ).fetchone()[0]
+
+    # ---------- заявки с сайта (веб-форма «Связаться») ----------
+
+    def add_lead(self, name: str, contact: str, message: str, event_id: str | None = None) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO site_leads (name, contact, message, event_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                (name, contact, message, event_id, _now()),
+            )
+        return cur.lastrowid
+
+    def leads_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM site_leads").fetchone()[0]
+
+    def recent_leads(self, limit: int = 10) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM site_leads ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
