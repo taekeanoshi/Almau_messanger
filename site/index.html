@@ -28,6 +28,9 @@ nav .wrap{display:flex;align-items:center;gap:8px;height:64px;overflow-x:auto}
 .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn.sm{padding:7px 14px;font-size:13px;margin-top:12px}
+button.btn{font:700 15px Manrope,system-ui,sans-serif;cursor:pointer;border:none}
+button.btn:disabled{opacity:.6;cursor:default}
+.going-count{color:var(--mute)}
 a:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
 section{padding:56px 0}
 .page{display:none}.page.on{display:block}
@@ -198,9 +201,26 @@ const BOT = "almau_messenger_bot";
 const botLink = payload => `https://t.me/${BOT}` + (payload ? `?start=${payload}` : "");
 document.querySelectorAll("[data-bot]").forEach(a => a.href = botLink());
 
-// Адрес бэкенда (bot/api.py), задеплоенного вместе с ботом на Railway.
+// Адрес бэкенда (bot/api_server.py) — отдельный сервис, задеплоенный независимо от бота.
 // После деплоя заменить на свой домен вида https://<проект>.up.railway.app — см. README → раздел «API».
-const API = "https://almau-messenger-production.up.railway.app";
+const API = "https://almau-api.up.railway.app";
+
+// Анонимный id посетителя сайта для кнопки «Иду» — живёт в localStorage браузера,
+// с Telegram и профилем в боте никак не связан.
+function visitorId() {
+  try {
+    let id = localStorage.getItem("almau_visitor");
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : `v${Date.now()}${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem("almau_visitor", id);
+    }
+    return id;
+  } catch {
+    return "anon";
+  }
+}
+const isGoingLocally = id => { try { return localStorage.getItem("going:" + id) === "1"; } catch { return false; } };
+const setGoingLocally = (id, going) => { try { localStorage.setItem("going:" + id, going ? "1" : "0"); } catch {} };
 
 const G = ([a, b]) => `radial-gradient(circle at 70% 20%,${a},transparent 60%),linear-gradient(160deg,${b},#050507)`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -229,12 +249,45 @@ function clubTile(c) {
 }
 
 function eventTile(e) {
+  const going = isGoingLocally(e.id);
   return `<article class="tile ev ${e.wide ? "wide" : ""}" data-id="${esc(e.id)}"><div class="art" style="background:${G(e.colors)}"></div>${badge(clubLogos[e.club], e.emoji, e.host)}
-    <div class="date">${esc(e.date)}</div><h3>${esc(e.title)}</h3><p>${esc(e.description)}</p><div class="who">${esc(e.host)}</div>
-    <a class="btn sm" href="${botLink("event_" + encodeURIComponent(e.id))}" target="_blank" rel="noopener">👥 Найти компанию</a></article>`;
+    <div class="date">${esc(e.date)}</div><h3>${esc(e.title)}</h3><p>${esc(e.description)}</p>
+    <div class="who">${esc(e.host)}<span class="going-count"></span></div>
+    <div class="actions">
+      <button type="button" class="btn sm ghost going-btn" data-going="${going ? 1 : 0}">${going ? "✅ Иду" : "Отметиться, что иду"}</button>
+      <a class="btn sm" href="${botLink("event_" + encodeURIComponent(e.id))}" target="_blank" rel="noopener">👥 Найти компанию</a>
+    </div></article>`;
 }
 
-// Живые цифры с бэкенда (bot/api.py → /api/stats). Если API недоступен, блок просто скрывается —
+// Клик по «Отметиться, что иду» шлёт отметку прямо в API сайта — без Telegram.
+document.addEventListener("click", async e => {
+  const btn = e.target.closest(".going-btn");
+  if (!btn) return;
+  const tile = btn.closest(".tile");
+  const id = tile.dataset.id;
+  const going = btn.dataset.going !== "1";
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/events/${encodeURIComponent(id)}/going`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({visitor_id: visitorId(), going}),
+    });
+    if (!r.ok) throw new Error("going");
+    const data = await r.json();
+    setGoingLocally(id, going);
+    btn.dataset.going = going ? "1" : "0";
+    btn.textContent = going ? "✅ Иду" : "Отметиться, что иду";
+    const countEl = tile.querySelector(".going-count");
+    if (countEl) countEl.textContent = ` · идут: ${data.count}`;
+  } catch {
+    alert("Не получилось отметиться — бэкенд недоступен. Попробуйте позже.");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Живые цифры с бэкенда (/api/stats). Если API недоступен, блок просто скрывается —
 // сайт на статичных данных остаётся рабочим.
 async function loadStats() {
   const el = document.getElementById("stats");
@@ -252,7 +305,7 @@ async function loadStats() {
   }
 }
 
-// Дополняет уже отрисованные карточки ивентов количеством «Иду» из БД бота (/api/events).
+// Дополняет уже отрисованные карточки ивентов количеством «Иду», отмеченных через сайт (/api/events).
 async function enhanceEventsWithGoing() {
   try {
     const r = await fetch(API + "/api/events");
@@ -261,8 +314,8 @@ async function enhanceEventsWithGoing() {
     const goingById = Object.fromEntries(live.map(e => [e.id, e.going]));
     document.querySelectorAll("#events .tile.ev").forEach(tile => {
       const n = goingById[tile.dataset.id];
-      const who = tile.querySelector(".who");
-      if (n != null && who) who.textContent += ` · идут: ${n}`;
+      const countEl = tile.querySelector(".going-count");
+      if (n != null && countEl) countEl.textContent = ` · идут: ${n}`;
     });
   } catch { /* бэкенд недоступен — карточки остаются как есть */ }
 }
@@ -290,9 +343,10 @@ function initLeadForm() {
   });
 }
 
-function mount(listId, filterId, items, tile) {
+function mount(listId, filterId, items, tile, onRendered) {
   const render = (t = "Все") => {
     document.getElementById(listId).innerHTML = items.filter(x => t === "Все" || x.category === t).map(tile).join("");
+    if (onRendered) onRendered();
   };
   filters(document.getElementById(filterId), items, render);
   render();
@@ -307,8 +361,7 @@ async function load() {
     })));
     clubLogos = Object.fromEntries(clubs.filter(c => c.logo).map(c => [c.id, c.logo]));
     mount("clubs", "cf", clubs, clubTile);
-    mount("events", "ef", events, eventTile);
-    enhanceEventsWithGoing();
+    mount("events", "ef", events, eventTile, enhanceEventsWithGoing);
   } catch (err) {
     const msg = `<div class="empty">Не удалось загрузить данные. Откройте сайт через веб-сервер (см. README), а не как файл.</div>`;
     document.getElementById("clubs").innerHTML = msg;

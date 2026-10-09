@@ -1,8 +1,9 @@
 """HTTP API для сайта: отдаёт клубы/ивенты из бэкенда и принимает заявки с формы.
 
-Работает в том же процессе, что и Telegram-бот (см. main.py), поэтому для хостинга
-на Railway достаточно одного сервиса: он слушает Telegram через long polling
-и параллельно поднимает веб-сервер на $PORT для сайта.
+Эту фабрику использует два разных запуска:
+- bot/api_server.py — отдельный процесс, только веб-API, без Telegram (обычный случай,
+  когда бота хостит кто-то другой);
+- bot/main.py — бот и API в одном процессе, если удобнее держать всё вместе.
 """
 import dataclasses
 import logging
@@ -78,6 +79,30 @@ async def get_stats(request: web.Request) -> web.Response:
     return web.json_response(db.stats())
 
 
+async def post_event_going(request: web.Request) -> web.Response:
+    """Отметка «Иду» прямо с сайта, без Telegram. Посетитель узнаётся по anonymous visitor_id
+    (сайт хранит его в localStorage), поэтому работает даже когда API не связан с ботом."""
+    content: Content = request.app["content"]
+    db: Database = request.app["db"]
+    event_id = request.match_info["event_id"]
+    if content.event(event_id) is None:
+        raise web.HTTPNotFound(reason="event not found")
+    try:
+        data = await request.json()
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid json")
+    if not isinstance(data, dict):
+        raise web.HTTPBadRequest(reason="invalid json")
+
+    visitor_id = str(data.get("visitor_id", "")).strip()[:100]
+    if not visitor_id:
+        raise web.HTTPBadRequest(reason="visitor_id is required")
+    going = bool(data.get("going", True))
+
+    db.set_going(f"web:{visitor_id}", event_id, going)
+    return web.json_response({"ok": True, "going": going, "count": db.going_count(event_id)})
+
+
 async def _notify_admins_of_lead(app: web.Application, name: str, contact: str,
                                   message: str, event_id: str | None) -> None:
     bot: Bot | None = app.get("bot")
@@ -115,17 +140,31 @@ async def post_lead(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "id": lead_id}, status=201)
 
 
+async def get_leads(request: web.Request) -> web.Response:
+    """Просмотр заявок без бота: GET /api/leads?token=<ADMIN_TOKEN>.
+    Нужен, когда API задеплоен отдельно от бота и команды /leads в Telegram нет."""
+    admin_token = request.app.get("admin_token")
+    if not admin_token or request.query.get("token") != admin_token:
+        raise web.HTTPUnauthorized(reason="invalid or missing token")
+    db: Database = request.app["db"]
+    return web.json_response([dict(row) for row in db.recent_leads(50)])
+
+
 def build_app(db: Database, content: Content, bot: Bot | None = None,
-              admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*") -> web.Application:
+              admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
+              admin_token: str = "") -> web.Application:
     app = web.Application(middlewares=[_cors_middleware(cors_origin)])
     app["db"] = db
     app["content"] = content
     app["bot"] = bot
     app["admin_ids"] = admin_ids
+    app["admin_token"] = admin_token
     app.router.add_get("/health", health)
     app.router.add_get("/api/clubs", get_clubs)
     app.router.add_get("/api/events", get_events)
     app.router.add_get("/api/events/{event_id}", get_event)
+    app.router.add_post("/api/events/{event_id}/going", post_event_going)
     app.router.add_get("/api/stats", get_stats)
     app.router.add_post("/api/leads", post_lead)
+    app.router.add_get("/api/leads", get_leads)
     return app

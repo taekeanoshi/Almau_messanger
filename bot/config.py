@@ -28,6 +28,7 @@ class Config:
     reports_to_ban: int
     port: int = 8080
     cors_origin: str = "*"
+    admin_token: str = ""
 
 
 def load_config() -> Config:
@@ -45,4 +46,5 @@ def load_config() -> Config:
         reports_to_ban=int(os.getenv("REPORTS_TO_BAN", "3")),
         port=int(os.getenv("PORT", "8080")),
         cors_origin=os.getenv("CORS_ORIGIN", "*"),
+        admin_token=os.getenv("ADMIN_TOKEN", ""),
     )

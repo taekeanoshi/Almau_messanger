@@ -41,7 +41,8 @@ def build_dispatcher(db: Database, content: Content, config) -> Dispatcher:
 
 async def run_api(bot: Bot, db: Database, content: Content, config: Config) -> None:
     """Веб-API для сайта (см. bot/api.py). Слушает $PORT, чтобы Railway видел живой HTTP-сервис."""
-    app = build_app(db, content, bot=bot, admin_ids=config.admin_ids, cors_origin=config.cors_origin)
+    app = build_app(db, content, bot=bot, admin_ids=config.admin_ids,
+                     cors_origin=config.cors_origin, admin_token=config.admin_token)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=config.port)
