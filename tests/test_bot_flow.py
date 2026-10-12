@@ -5,15 +5,16 @@ from datetime import datetime
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import CopyMessage, SendMessage, TelegramMethod
-from aiogram.types import CallbackQuery, Chat, Message, MessageId, Update, User
+from aiogram.types import CallbackQuery, Chat, Location, Message, MessageId, Update, User
 
 from bot.config import BASE_DIR, Config
 from bot.content import Content
 from bot.db import Database
-from bot.handlers import chat, events, moderation, profile
+from bot.handlers import chat, club_admin, events, hikes, moderation, profile
 from bot.main import build_dispatcher
 
 ADMIN = 900
+ORGANIZER = 800   # организатор клуба Summit Seekers (CLUB_ADMIN_IDS)
 
 
 class FakeSession(BaseSession):
@@ -42,10 +43,12 @@ class Harness:
         self.session = FakeSession()
         self.bot = Bot("123:ABC", session=self.session)
         self.db = Database(":memory:")
-        config = Config("123:ABC", frozenset({ADMIN}), None, BASE_DIR / "site" / "data", "test_bot", 2)
+        config = Config("123:ABC", frozenset({ADMIN}), None, BASE_DIR / "site" / "data", "test_bot", 2,
+                        club_admin_ids=frozenset({ORGANIZER}))
         self.content = Content(config.data_dir)
-        for module in (chat, events, moderation, profile):  # роутеры модульные: отвязываем от прошлого теста
+        for module in (chat, club_admin, events, hikes, moderation, profile):  # роутеры модульные: отвязываем от прошлого теста
             module.router._parent_router = None
+        self.config = config
         self.dp = build_dispatcher(self.db, self.content, config)
         self.mm = self.dp["mm"]
         self._id = 0
@@ -57,6 +60,12 @@ class Harness:
     async def send(self, uid, text):
         msg = Message(message_id=self._next(), date=datetime.now(), chat=Chat(id=uid, type="private"),
                       from_user=User(id=uid, is_bot=False, first_name="U"), text=text)
+        await self.dp.feed_update(self.bot, Update(update_id=self._next(), message=msg))
+
+    async def send_location(self, uid, lat, lon):
+        msg = Message(message_id=self._next(), date=datetime.now(), chat=Chat(id=uid, type="private"),
+                      from_user=User(id=uid, is_bot=False, first_name="U"),
+                      location=Location(latitude=lat, longitude=lon))
         await self.dp.feed_update(self.bot, Update(update_id=self._next(), message=msg))
 
     async def click(self, uid, data):

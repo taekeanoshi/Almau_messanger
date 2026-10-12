@@ -132,6 +132,7 @@ async def on_clubs(message: Message, content: Content) -> None:
     lines = ["🏛 <b>Студенческие клубы AlmaU</b>\n"]
     for c in content.clubs:
         link = f' — <a href="https://instagram.com/{c.instagram}">@{c.instagram}</a>' if c.instagram else ""
+        partner = "\n🤝 <b>Партнёр Almau Messenger</b> · походы и запись: /hikes" if c.partner else ""
         lines.append(f"{c.emoji} <b>{html.escape(c.name)}</b> · {html.escape(c.category)}{link}\n"
-                     f"{html.escape(c.description)}\n")
+                     f"{html.escape(c.description)}{partner}\n")
     await message.answer("\n".join(lines), disable_web_page_preview=True)

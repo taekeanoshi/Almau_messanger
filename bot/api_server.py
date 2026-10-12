@@ -32,6 +32,7 @@ async def main() -> None:
     admin_token = os.getenv("ADMIN_TOKEN", "")
 
     db, content = Database(db_path), Content(data_dir)
+    db.hikes.seed(content.hikes_seed)
     app = build_app(db, content, bot=None, admin_ids=frozenset(), cors_origin=cors_origin,
                      admin_token=admin_token)
 

@@ -148,3 +148,37 @@ def test_get_leads_disabled_without_admin_token_configured():
             assert resp.status == 401
 
     run(go())
+
+
+def test_hikes_api_shows_free_spots_and_never_leaks_personal_data():
+    async def go():
+        client, db, content = make_client()
+        hike = db.hikes.create(club_id="summit", title="Тропа", start_at="2099-12-31T07:00", capacity=2)
+        db.hikes.create(club_id="other", title="Чужой клуб", start_at="2099-12-31T08:00", capacity=5)
+        db.hikes.signup(hike.id, 1, "Секретное Имя", "+77071234567")
+        async with client:
+            resp = await client.get("/api/hikes?club=summit")
+            assert resp.status == 200
+            (item,) = await resp.json()
+            assert (item["id"], item["going"], item["spots_left"], item["capacity"]) == (hike.id, 1, 1, 2)
+            raw = await (await client.get("/api/hikes")).text()
+            assert "Секретное Имя" not in raw and "+77071234567" not in raw
+            assert len(await (await client.get("/api/hikes")).json()) == 2
+
+            one = await client.get(f"/api/hikes/{hike.id}")
+            assert one.status == 200 and (await one.json())["title"] == "Тропа"
+            assert (await client.get("/api/hikes/нет")).status == 404
+
+    run(go())
+
+
+def test_cancelled_and_finished_hikes_are_not_listed():
+    async def go():
+        client, db, content = make_client()
+        gone = db.hikes.create(club_id="summit", title="Отменён", start_at="2099-12-31T07:00")
+        db.hikes.cancel_hike(gone.id)
+        db.hikes.create(club_id="summit", title="Был давно", start_at="2020-01-01T07:00")
+        async with client:
+            assert await (await client.get("/api/hikes?club=summit")).json() == []
+
+    run(go())

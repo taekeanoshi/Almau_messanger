@@ -51,7 +51,9 @@ def _event_payload(content: Content, db: Database, event_id: str) -> dict | None
 
 
 async def health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok"})
+    """mode показывает, что запущено на этом домене: api-only (без бота) или bot+api."""
+    bot: Bot | None = request.app.get("bot")
+    return web.json_response({"status": "ok", "mode": "bot+api" if bot else "api-only"})
 
 
 async def get_clubs(request: web.Request) -> web.Response:
@@ -72,6 +74,29 @@ async def get_event(request: web.Request) -> web.Response:
     if payload is None:
         raise web.HTTPNotFound(reason="event not found")
     return web.json_response(payload)
+
+
+def _hike_payloads(db: Database, club: str | None) -> list[dict]:
+    out = []
+    for h in db.hikes.upcoming(club):
+        going, waitlist = db.hikes.counts(h.id)
+        out.append(h.public_dict(going, waitlist))
+    return out
+
+
+async def get_hikes(request: web.Request) -> web.Response:
+    """Ближайшие походы с живым числом свободных мест. Имён и телефонов здесь нет."""
+    db: Database = request.app["db"]
+    return web.json_response(_hike_payloads(db, request.query.get("club") or None))
+
+
+async def get_hike(request: web.Request) -> web.Response:
+    db: Database = request.app["db"]
+    hike = db.hikes.get(request.match_info["hike_id"])
+    if hike is None:
+        raise web.HTTPNotFound(reason="hike not found")
+    going, waitlist = db.hikes.counts(hike.id)
+    return web.json_response(hike.public_dict(going, waitlist))
 
 
 async def get_stats(request: web.Request) -> web.Response:
@@ -164,6 +189,8 @@ def build_app(db: Database, content: Content, bot: Bot | None = None,
     app.router.add_get("/api/events", get_events)
     app.router.add_get("/api/events/{event_id}", get_event)
     app.router.add_post("/api/events/{event_id}/going", post_event_going)
+    app.router.add_get("/api/hikes", get_hikes)
+    app.router.add_get("/api/hikes/{hike_id}", get_hike)
     app.router.add_get("/api/stats", get_stats)
     app.router.add_post("/api/leads", post_lead)
     app.router.add_get("/api/leads", get_leads)
