@@ -14,7 +14,7 @@
   {"id": "mof", "logo": "img/clubs/mof.jpg", "name": "MOF — Mass On Family", "emoji": "🔥", "instagram": "mof.almaty", "category": "Ивенты", "colors": ["#ff4a3a", "#3a0a06"],
    "description": "Семья, которая чтит традиции. Проводят мероприятия по всему городу и в других вузах.",
    "activities": ["MOF ISSYK", "MOF DAY", "Photo-hunting", "MOF CAMPING"]},
-  {"id": "summit", "logo": "img/clubs/summit.jpg", "name": "Summit Seekers", "emoji": "🏔️", "instagram": "summit.seekers.almau", "category": "Спорт", "colors": ["#3ad4ff", "#05263a"],
+  {"id": "summit", "partner": true, "page": "#summit", "logo": "img/clubs/summit.jpg", "name": "Summit Seekers", "emoji": "🏔️", "instagram": "summit.seekers.almau", "category": "Спорт", "colors": ["#3ad4ff", "#05263a"],
    "description": "Горный клуб: безопасный туризм, выносливость, командная работа и бережное отношение к природе.",
    "activities": ["Лекции о туризме", "Походы в горы"]},
   {"id": "sportlife", "logo": "img/clubs/sportlife.jpg", "name": "Sport Life (SPL)", "emoji": "⚽", "instagram": "sportlifealmau", "category": "Спорт", "colors": ["#3aff8a", "#06301a"],

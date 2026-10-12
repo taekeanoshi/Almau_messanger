@@ -29,6 +29,8 @@ class Config:
     port: int = 8080
     cors_origin: str = "*"
     admin_token: str = ""
+    club_admin_ids: frozenset[int] = frozenset()   # организаторы партнёрского клуба (Summit Seekers)
+    telegram_api_url: str = ""                      # свой Bot API сервер или заглушка в тестах; обычно пусто
 
 
 def load_config() -> Config:
@@ -47,4 +49,6 @@ def load_config() -> Config:
         port=int(os.getenv("PORT", "8080")),
         cors_origin=os.getenv("CORS_ORIGIN", "*"),
         admin_token=os.getenv("ADMIN_TOKEN", ""),
+        club_admin_ids=frozenset(int(x) for x in os.getenv("CLUB_ADMIN_IDS", "").replace(" ", "").split(",") if x),
+        telegram_api_url=os.getenv("TELEGRAM_API_URL", ""),
     )

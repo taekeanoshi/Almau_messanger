@@ -1,0 +1,28 @@
+[
+  {
+    "id": "summit-demo-1",
+    "club": "summit",
+    "demo": true,
+    "title": "Поход выходного дня",
+    "start": "2026-10-24T07:00",
+    "duration_hours": 6,
+    "meeting_point": "Уточняется организатором",
+    "route": "Лёгкий маршрут в горах Заилийского Алатау",
+    "difficulty": "Лёгкий",
+    "capacity": 20,
+    "price": "Уточняется"
+  },
+  {
+    "id": "summit-demo-2",
+    "club": "summit",
+    "demo": true,
+    "title": "Лекция о безопасном туризме и поход",
+    "start": "2026-11-07T07:00",
+    "duration_hours": 7,
+    "meeting_point": "Уточняется организатором",
+    "route": "Маршрут средней сложности, подробности — у организатора",
+    "difficulty": "Средний",
+    "capacity": 15,
+    "price": "Уточняется"
+  }
+]

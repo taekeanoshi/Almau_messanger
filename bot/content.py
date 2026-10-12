@@ -13,6 +13,7 @@ class Club:
     description: str
     instagram: str | None
     activities: tuple[str, ...]
+    partner: bool = False
 
 
 @dataclass(frozen=True)
@@ -26,19 +27,26 @@ class Event:
     description: str
 
 
+def _load_optional(path: Path, default):
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+
+
 class Content:
     def __init__(self, data_dir: Path) -> None:
         clubs = json.loads((data_dir / "clubs.json").read_text(encoding="utf-8"))
         events = json.loads((data_dir / "events.json").read_text(encoding="utf-8"))
         self.clubs = [
             Club(c["id"], c["name"], c["emoji"], c["category"], c["description"],
-                 c.get("instagram"), tuple(c.get("activities", [])))
+                 c.get("instagram"), tuple(c.get("activities", [])), bool(c.get("partner", False)))
             for c in clubs
         ]
         self.events = [
             Event(e["id"], e["title"], e["emoji"], e["date"], e["host"], e["category"], e["description"])
             for e in events
         ]
+        # походы и «школа туризма» необязательны: без файлов бот работает как раньше
+        self.hikes_seed: list[dict] = _load_optional(data_dir / "hikes.json", [])
+        self.school: dict = _load_optional(data_dir / "school.json", {"lessons": [], "gear": [], "safety": []})
         self._events_by_id = {e.id: e for e in self.events}
         if len(self._events_by_id) != len(self.events):
             raise ValueError("В events.json повторяются id ивентов")

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from bot.hikes import HikeStore
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id          INTEGER PRIMARY KEY,           -- Telegram user id
@@ -62,6 +64,7 @@ class Database:
         self.conn = sqlite3.connect(path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self.hikes = HikeStore(self.conn)   # походы партнёрского клуба, см. bot/hikes.py
 
     # ---------- профиль ----------
 
