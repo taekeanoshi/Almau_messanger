@@ -95,6 +95,34 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .lead textarea{min-height:90px}
 .lead .btn{justify-self:start;border:none;cursor:pointer;font:700 15px Manrope}
 .lead-status{color:var(--mute);font-size:14px;margin:0;min-height:1.2em}
+.partner-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--acc);color:var(--acc);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:700}
+.partner-card{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px;text-decoration:none}
+.partner-card:hover{border-color:var(--acc)}
+.partner-card img{width:84px;height:84px;border-radius:50%;object-fit:cover;flex:none}
+.partner-card div{flex:1;min-width:220px}.partner-card h3{font-size:20px;margin:8px 0 6px}.partner-card p{color:var(--mute);margin:0;font-size:15px}
+.club-hero{display:flex;gap:32px;align-items:center;flex-wrap:wrap;padding:56px 0 24px}
+.club-hero img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:3px solid var(--line);flex:none}
+.club-hero h1{font-size:clamp(34px,5vw,60px);font-weight:800;margin:14px 0 10px}
+.club-hero p{color:var(--mute);font-size:18px;max-width:36em;margin:0 0 22px}
+.hike{display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px}
+.hike .when{font-family:Unbounded;font-size:13px;color:var(--acc)}
+.hike h3{font-size:19px}.hike p{margin:0;color:var(--mute);font-size:14px}
+.hike .meta{display:flex;gap:6px;flex-wrap:wrap}
+.hike .meta span,.demo-tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:#dcdce4}
+.demo-tag{color:var(--mute);margin-left:8px;font-family:Manrope;font-weight:500}
+.spots{font-size:13px;color:var(--text)}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--acc);border-radius:99px}
+.hike .btn{align-self:flex-start;margin-top:auto}
+.rules{display:grid;gap:10px;padding:0;margin:0;list-style:none}
+.rules li{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 18px;color:#dcdce4}
+.checklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.checklist label{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:11px 14px;cursor:pointer}
+.checklist input{accent-color:var(--acc);width:18px;height:18px;flex:none}
+details.lesson{background:var(--panel);border:1px solid var(--line);border-radius:16px;margin-bottom:10px}
+details.lesson summary{padding:16px 20px;cursor:pointer;font-weight:700;list-style:none}
+details.lesson summary::-webkit-details-marker{display:none}
+details.lesson[open] summary{color:var(--acc)}
+details.lesson ul{margin:0;padding:0 20px 18px 40px;color:#dcdce4;display:grid;gap:6px}
 footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding:28px 0 40px}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.feat{grid-template-columns:1fr}.tile.wide{grid-column:auto}}
 @media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{display:none}}
@@ -106,6 +134,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  <a class="tab" href="#home" data-p="home">О проекте</a>
  <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
  <a class="tab" href="#events" data-p="events">Ивенты</a>
+ <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
  <a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a>
 </div></nav>
 
@@ -161,6 +190,16 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </section>
 
  <section>
+  <div class="head"><div><h2>Партнёры</h2><p>Клубы, которые работают с нами: запись на мероприятия, напоминания и безопасность идут через нашего бота.</p></div></div>
+  <a class="partner-card" href="#summit">
+   <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
+   <div><span class="partner-badge">🤝 Партнёр Almau Messenger</span><h3>Summit Seekers</h3>
+   <p>Горный клуб AlmaU: походы выходного дня и лекции о безопасном туризме. Запись, напоминания и прогноз погоды в боте.</p></div>
+   <span class="btn sm">Смотреть походы</span>
+  </a>
+ </section>
+
+ <section>
   <div class="head"><div><h2>Хотите такое у себя?</h2><p>Оставьте заявку — расскажем, как подключить анонимный чат и афишу ивентов для вашего вуза или клуба.</p></div></div>
   <form class="lead" id="lead-form">
    <input name="name" placeholder="Имя" required maxlength="80" autocomplete="name">
@@ -181,6 +220,54 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
    <div class="filters" id="cf"></div></div>
   <div class="grid" id="clubs"></div>
  </section>
+</div>
+
+<!-- SUMMIT SEEKERS: партнёр -->
+<div class="page" id="p-summit">
+ <div class="club-hero">
+  <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
+  <div>
+   <span class="partner-badge">🤝 Партнёр Almau Messenger</span>
+   <h1>Summit Seekers</h1>
+   <p>Горный клуб AlmaU: безопасный туризм, выносливость, командная работа и бережное отношение к природе. Лекции о туризме и походы в горы.</p>
+   <div class="actions">
+    <a class="btn" href="#summit" data-scroll="summit-hikes">Выбрать поход</a>
+    <a class="btn ghost" href="https://instagram.com/summit.seekers.almau" target="_blank" rel="noopener">Instagram клуба</a>
+   </div>
+  </div>
+ </div>
+
+ <section id="summit-hikes">
+  <div class="head"><div><h2>Ближайшие походы</h2><p>Запись идёт через Telegram-бота: имя и телефон видит только организатор клуба. Мест нет? Встанете в лист ожидания и мы напишем, если место освободится.</p></div></div>
+  <div class="grid" id="hikes" aria-live="polite"></div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Как это работает</h2></div></div>
+  <div class="steps">
+   <div class="step"><span>1</span><h3>Выберите поход</h3><p>Дата, сбор, сложность и число свободных мест видны сразу.</p></div>
+   <div class="step"><span>2</span><h3>Запишитесь в боте</h3><p>Имя и телефон нужны организатору для связи и безопасности в горах.</p></div>
+   <div class="step"><span>3</span><h3>Получите напоминания</h3><p>За сутки и за 3 часа: место сбора, прогноз погоды и список вещей.</p></div>
+   <div class="step"><span>4</span><h3>Отметьтесь после спуска</h3><p>Кнопка «Я спустился» сообщает организатору, что вы вернулись. Есть и кнопка SOS.</p></div>
+  </div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Безопасность в горах</h2></div></div>
+  <ul class="rules" id="safety"></ul>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Что взять с собой</h2><p>Отмечайте, что уже собрали: галочки сохраняются в вашем браузере.</p></div></div>
+  <div class="checklist" id="gear"></div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Школа туризма</h2><p>Короткие уроки для тех, кто идёт в горы. Те же уроки есть в боте: команда /school.</p></div></div>
+  <div id="lessons"></div>
+ </section>
+
+ <section><div class="cta"><img class="mark" src="img/clubs/summit.jpg" alt="Логотип Summit Seekers"><h2>Идёте в горы с Summit Seekers?</h2><p>Summit Seekers — партнёр Almau Messenger: запись на походы, напоминания и отметки безопасности работают через нашего бота.</p><a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a></div></section>
 </div>
 
 <!-- EVENTS -->
@@ -245,7 +332,8 @@ function clubTile(c) {
   return `<article class="tile ${c.wide ? "wide" : ""}"><div class="art" style="background:${G(c.colors)}"></div>${badge(c.logo, c.emoji, c.name)}
     ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
     <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
-    <div class="chips">${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div></article>`;
+    <div class="chips">${c.partner ? `<span>🤝 Партнёр Almau Messenger</span>` : ""}${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div>
+    ${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">🏔 Походы и запись</a>` : ""}</article>`;
 }
 
 function eventTile(e) {
@@ -369,12 +457,99 @@ async function load() {
   }
 }
 
+// ---------- Summit Seekers (партнёр) ----------
+const MONTHS = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+const WEEKDAYS = ["вс","пн","вт","ср","чт","пт","сб"];
+// «2026-10-24T07:00» → «24 октября, сб, 07:00». Разбираем строку вручную, чтобы часовой пояс браузера ничего не сдвигал.
+function fmtStart(iso) {
+  const [date, time = ""] = iso.split("T");
+  const [y, m, d] = date.split("-").map(Number);
+  return `${d} ${MONTHS[m - 1]}, ${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}, ${time.slice(0, 5)}`;
+}
+
+function hikeCard(h) {
+  const live = h.going != null;
+  const full = live && h.spots_left <= 0;
+  const spots = !live ? `Мест: ${h.capacity}`
+    : full ? `Мест нет, в листе ожидания: ${h.waitlist}` : `Осталось ${h.spots_left} из ${h.capacity} мест`;
+  const pct = live ? Math.min(100, Math.round(h.going * 100 / h.capacity)) : 0;
+  return `<article class="hike">
+    <div class="when">${esc(fmtStart(h.start))}</div>
+    <h3>${esc(h.title)}${h.demo ? `<span class="demo-tag">Пример</span>` : ""}</h3>
+    ${h.route ? `<p>${esc(h.route)}</p>` : ""}
+    <div class="meta"><span>🥾 ${esc(h.difficulty)}</span><span>⏱ ~${esc(String(h.duration_hours).replace(".", ","))} ч</span><span>💰 ${esc(h.price)}</span></div>
+    <p>📍 Сбор: ${esc(h.meeting_point || "уточняется")}</p>
+    <div class="spots">${esc(spots)}</div>
+    ${live ? `<div class="bar" aria-hidden="true"><i style="width:${pct}%"></i></div>` : ""}
+    <a class="btn sm" href="${botLink("hike_" + encodeURIComponent(h.id) + "__site")}" target="_blank" rel="noopener">${full ? "Встать в лист ожидания" : "Записаться в Telegram"}</a>
+  </article>`;
+}
+
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url);
+  return r.json();
+}
+
+// Живые данные берём из API (там считаются свободные места). Если API недоступен, показываем походы из data/hikes.json.
+async function loadHikes() {
+  const box = document.getElementById("hikes");
+  let hikes;
+  try {
+    hikes = await fetchJson(`${API}/api/hikes?club=summit`);
+  } catch {
+    try {
+      const now = new Date();
+      hikes = (await fetchJson("data/hikes.json")).filter(h => h.club === "summit" && new Date(h.start) > now);
+    } catch {
+      box.innerHTML = `<div class="empty">Не удалось загрузить походы. Попробуйте позже.</div>`;
+      return;
+    }
+  }
+  box.innerHTML = hikes.length ? hikes.map(hikeCard).join("")
+    : `<div class="empty">Ближайшие походы скоро появятся. Подпишитесь на Instagram клуба, чтобы не пропустить.</div>`;
+}
+
+const gearKey = i => "gear:" + i;
+function renderSchool(school) {
+  document.getElementById("safety").innerHTML = school.safety.map(t => `<li>${esc(t)}</li>`).join("");
+  const checked = i => { try { return localStorage.getItem(gearKey(i)) === "1"; } catch { return false; } };
+  document.getElementById("gear").innerHTML = school.gear.map((g, i) =>
+    `<label><input type="checkbox" data-gear="${i}" ${checked(i) ? "checked" : ""}> ${esc(g)}</label>`).join("");
+  document.getElementById("lessons").innerHTML = school.lessons.map(l =>
+    `<details class="lesson"><summary>${l.emoji} ${esc(l.title)}</summary><ul>${l.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></details>`).join("");
+}
+document.addEventListener("change", e => {
+  const box = e.target.closest("[data-gear]");
+  if (box) { try { localStorage.setItem(gearKey(box.dataset.gear), box.checked ? "1" : "0"); } catch {} }
+});
+document.addEventListener("click", e => {
+  const link = e.target.closest("[data-scroll]");
+  if (!link) return;
+  e.preventDefault();
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(link.dataset.scroll)?.scrollIntoView({behavior: calm ? "auto" : "smooth"});
+});
+
+let schoolLoaded = false;
+async function loadSummit() {
+  loadHikes();
+  if (schoolLoaded) return;
+  try {
+    renderSchool(await fetchJson("data/school.json"));
+    schoolLoaded = true;
+  } catch {
+    document.getElementById("lessons").innerHTML = `<div class="empty">Не удалось загрузить уроки. Откройте сайт через веб-сервер.</div>`;
+  }
+}
+
 function route() {
   const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events"].includes(p) ? p : "home";
+  const id = ["home", "clubs", "events", "summit"].includes(p) ? p : "home";
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
   window.scrollTo(0, 0);
+  if (id === "summit") loadSummit();
 }
 addEventListener("hashchange", route);
 route();
