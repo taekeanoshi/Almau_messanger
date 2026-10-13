@@ -24,7 +24,7 @@
 
 | Что | Ссылка |
 |-----|--------|
-| Сайт | https://almaumessanger-site.vercel.app |
+| Сайт | https://almau-messenger.vercel.app |
 | Бот | https://t.me/Almau_mes_bot |
 | API (бэкенд) | https://almaumessanger-production.up.railway.app |
 
