@@ -284,7 +284,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 
 <script>
 // Username бота без @. Тот же, что BOT_USERNAME в .env.
-const BOT = "almau_messenger_bot";
+const BOT = "Almau_mes_bot";
 const botLink = payload => `https://t.me/${BOT}` + (payload ? `?start=${payload}` : "");
 document.querySelectorAll("[data-bot]").forEach(a => a.href = botLink());
 

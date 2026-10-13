@@ -44,7 +44,7 @@ def load_config() -> Config:
         admin_ids=admins,
         db_path=Path(os.getenv("DB_PATH", BASE_DIR / "almau.db")),
         data_dir=Path(os.getenv("DATA_DIR", BASE_DIR / "site" / "data")),
-        bot_username=os.getenv("BOT_USERNAME", "almau_messenger_bot"),
+        bot_username=os.getenv("BOT_USERNAME", "Almau_mes_bot"),
         reports_to_ban=int(os.getenv("REPORTS_TO_BAN", "3")),
         port=int(os.getenv("PORT", "8080")),
         cors_origin=os.getenv("CORS_ORIGIN", "*"),
