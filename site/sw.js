@@ -1,14 +1,9 @@
-// Минимальный service worker — только чтобы сайт считался PWA и был устанавливаемым.
-// API-запросы (другой домен) не кешируются и всегда идут в сеть.
-const CACHE = "almau-shell-v1";
-const SHELL = [
-  "./",
-  "./index.html",
-  "./manifest.json",
-  "./img/logo.png",
-  "./img/icon-192.png",
-  "./img/icon-512.png",
-];
+// Service worker — нужен только чтобы сайт считался устанавливаемым приложением (PWA).
+// Стратегия "сначала сеть": страница всегда свежая, кэш — только резерв при оффлайне.
+// Версию кэша меняем при каждом значимом обновлении, чтобы у всех, кто уже поставил
+// приложение, старый кэш (со старым HTML) гарантированно вычистился.
+const CACHE = "almau-shell-v2";
+const SHELL = ["img/icon-192.png", "img/icon-512.png"];  // только иконки — HTML не кешируем вообще
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
@@ -26,6 +21,6 @@ self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;  // не трогаем API на другом домене
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });
