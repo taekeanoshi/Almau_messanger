@@ -1,4 +1,4 @@
-"""Тесты веб-чата: регистрация, вход по коду на почту, подбор по полу, сообщения."""
+"""Тесты веб-чата: регистрация с подтверждением почты, вход по паролю, подбор по полу, сообщения."""
 import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
@@ -36,48 +36,67 @@ def capture_otp_emails(monkeypatch):
     return sent
 
 
-async def _register(client, first_name, last_name, phone, email, gender):
+async def _register(client, first_name, last_name, phone, email, password, gender):
     resp = await client.post("/api/chat/register", json={
-        "first_name": first_name, "last_name": last_name,
-        "phone": phone, "email": email, "gender": gender,
+        "first_name": first_name, "last_name": last_name, "phone": phone,
+        "email": email, "password": password, "gender": gender,
     })
     body = await resp.json() if resp.status in (200, 201) else None
     return resp.status, body
 
 
-async def _login_via_otp(client, email, sent):
-    resp = await client.post("/api/chat/otp/request", json={"email": email})
-    assert resp.status == 200
+async def _register_and_verify(client, sent, first_name, last_name, phone, email, password, gender):
+    """Регистрирует и сразу подтверждает почту кодом — возвращает тело ответа otp/verify (с токеном)."""
+    status, body = await _register(client, first_name, last_name, phone, email, password, gender)
+    assert status == 201, body
+    assert body["email"] == email
     code = sent[email]
-    return await client.post("/api/chat/otp/verify", json={"email": email, "code": code})
+    resp = await client.post("/api/chat/otp/verify", json={"email": email, "code": code})
+    assert resp.status == 200
+    return await resp.json()
 
 
-def test_register_and_login_with_otp(monkeypatch):
+def test_register_requires_verification_before_login(monkeypatch):
     sent = capture_otp_emails(monkeypatch)
 
     async def go():
         client, db = make_client()
         async with client:
             status, body = await _register(client, "Аян", "Касым", "+7 700 123 45 67",
-                                            "ayan@example.com", "male")
+                                            "ayan@example.com", "secret1", "male")
             assert status == 201
-            assert body["ok"] is True and "token" in body
-            assert body["user"]["gender"] == "male"
+            assert body["ok"] is True and "email" in body
+            assert "token" not in body  # токен выдаётся только после подтверждения почты
 
             # Телефон нормализуется (пробелы убираются), повторная регистрация тем же телефоном — конфликт
             status, _ = await _register(client, "Другой", "Чел", "+77001234567",
-                                        "other@example.com", "female")
+                                        "other@example.com", "secret2", "female")
             assert status == 409
 
             # Тот же email с другим телефоном — тоже конфликт
             status, _ = await _register(client, "Третий", "Чел", "+77009998877",
-                                        "ayan@example.com", "female")
+                                        "ayan@example.com", "secret3", "female")
             assert status == 409
 
-            resp = await _login_via_otp(client, "ayan@example.com", sent)
+            # Пока почта не подтверждена — логин с верным паролем всё равно отклоняется
+            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "secret1"})
+            assert resp.status == 403
+
+            code = sent["ayan@example.com"]
+            resp = await client.post("/api/chat/otp/verify", json={"email": "ayan@example.com", "code": code})
+            assert resp.status == 200
+            verify_body = await resp.json()
+            assert verify_body["user"]["id"] == 1
+
+            # Теперь логин с правильным паролем проходит
+            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "secret1"})
             assert resp.status == 200
             login_body = await resp.json()
-            assert login_body["user"]["id"] == body["user"]["id"]
+            assert login_body["user"]["id"] == 1
+
+            # Неверный пароль по-прежнему отклоняется
+            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "wrong"})
+            assert resp.status == 401
 
     run(go())
 
@@ -98,14 +117,12 @@ def test_otp_verify_rejects_wrong_code(monkeypatch):
     async def go():
         client, db = make_client()
         async with client:
-            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "male")
-            await client.post("/api/chat/otp/request", json={"email": "ayan@example.com"})
-            assert "ayan@example.com" in sent
+            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "secret1", "male")
+            assert "ayan@example.com" in sent  # код уже отправлен при регистрации
 
             resp = await client.post("/api/chat/otp/verify", json={"email": "ayan@example.com", "code": "000000"})
             assert resp.status == 401
 
-            # Без запрошенного кода вообще (для другого email) — тоже 401
             resp = await client.post("/api/chat/otp/verify", json={"email": "never@example.com", "code": "123456"})
             assert resp.status == 401
 
@@ -118,8 +135,7 @@ def test_otp_locks_after_too_many_wrong_attempts(monkeypatch):
     async def go():
         client, db = make_client()
         async with client:
-            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "male")
-            await client.post("/api/chat/otp/request", json={"email": "ayan@example.com"})
+            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "secret1", "male")
 
             for _ in range(5):
                 resp = await client.post("/api/chat/otp/verify",
@@ -138,25 +154,37 @@ def test_registration_validation():
     async def go():
         client, db = make_client()
         async with client:
-            status, _ = await _register(client, "", "Фамилия", "+77001234567", "a@example.com", "male")
+            status, _ = await _register(client, "", "Фамилия", "+77001234567",
+                                        "a@example.com", "secret1", "male")
             assert status == 400  # нет имени
 
-            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567", "not-an-email", "male")
+            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
+                                        "not-an-email", "secret1", "male")
             assert status == 400  # невалидная почта
 
-            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567", "a@example.com", "alien")
+            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
+                                        "a@example.com", "123", "male")
+            assert status == 400  # пароль короче 6 символов
+
+            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
+                                        "a@example.com", "secret1", "alien")
             assert status == 400  # пол не male/female
 
     run(go())
 
 
-def test_gender_matching_opposite_and_same():
+def test_gender_matching_opposite_and_same(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
     async def go():
         client, db = make_client()
         async with client:
-            _, male_a = await _register(client, "А", "А", "+77001110001", "a@example.com", "male")
-            _, female_b = await _register(client, "Б", "Б", "+77001110002", "b@example.com", "female")
-            _, male_c = await _register(client, "В", "В", "+77001110003", "c@example.com", "male")
+            male_a = await _register_and_verify(client, sent, "А", "А", "+77001110001",
+                                                "a@example.com", "secret1", "male")
+            female_b = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
+                                                   "b@example.com", "secret1", "female")
+            male_c = await _register_and_verify(client, sent, "В", "В", "+77001110003",
+                                                "c@example.com", "secret1", "male")
 
             token_a, token_b, token_c = male_a["token"], female_b["token"], male_c["token"]
 
@@ -185,12 +213,16 @@ def test_gender_matching_opposite_and_same():
     run(go())
 
 
-def test_send_and_poll_messages():
+def test_send_and_poll_messages(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
     async def go():
         client, db = make_client()
         async with client:
-            _, u1 = await _register(client, "А", "А", "+77001110001", "a@example.com", "male")
-            _, u2 = await _register(client, "Б", "Б", "+77001110002", "b@example.com", "female")
+            u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
+                                            "b@example.com", "secret1", "female")
             t1, t2 = u1["token"], u2["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -221,12 +253,16 @@ def test_send_and_poll_messages():
     run(go())
 
 
-def test_stop_ends_dialog_for_both_sides():
+def test_stop_ends_dialog_for_both_sides(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
     async def go():
         client, db = make_client()
         async with client:
-            _, u1 = await _register(client, "А", "А", "+77001110001", "a@example.com", "male")
-            _, u2 = await _register(client, "Б", "Б", "+77001110002", "b@example.com", "female")
+            u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
+                                            "b@example.com", "secret1", "female")
             t1, t2 = u1["token"], u2["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -241,13 +277,18 @@ def test_stop_ends_dialog_for_both_sides():
     run(go())
 
 
-def test_next_requeues_immediately():
+def test_next_requeues_immediately(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
     async def go():
         client, db = make_client()
         async with client:
-            _, u1 = await _register(client, "А", "А", "+77001110001", "a@example.com", "male")
-            _, u2 = await _register(client, "Б", "Б", "+77001110002", "b@example.com", "female")
-            _, u3 = await _register(client, "В", "В", "+77001110003", "c@example.com", "female")
+            u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
+                                            "b@example.com", "secret1", "female")
+            u3 = await _register_and_verify(client, sent, "В", "В", "+77001110003",
+                                            "c@example.com", "secret1", "female")
             t1, t2, t3 = u1["token"], u2["token"], u3["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -274,11 +315,13 @@ def test_unauthorized_without_token():
     run(go())
 
 
-def test_stats_include_web_chat_counts():
+def test_stats_include_web_chat_counts(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
     async def go():
         client, db = make_client()
         async with client:
-            await _register(client, "А", "А", "+77001110001", "a@example.com", "male")
+            await _register(client, "А", "А", "+77001110001", "a@example.com", "secret1", "male")
             resp = await client.get("/api/stats")
             data = await resp.json()
             assert data["web_users"] == 1

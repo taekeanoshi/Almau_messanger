@@ -1,12 +1,14 @@
 """Анонимный чат прямо на сайте — независимо от Telegram-бота.
 
-Свои аккаунты (имя, фамилия, телефон, почта), свой пол и подбор собеседника
-по полу («такой же» / «противоположный» / «любой»), свои диалоги и сообщения.
-Все данные — в таблицах web_* (bot/db.py), отдельно от таблиц бота.
+Свои аккаунты (имя, фамилия, телефон, почта, пароль), свой пол и подбор
+собеседника по полу («такой же» / «противоположный» / «любой»), свои диалоги
+и сообщения. Все данные — в таблицах web_* (bot/db.py), отдельно от таблиц бота.
 
-Вход — без пароля: одноразовый 6-значный код на почту (через Brevo), действует
-10 минут. Если BREVO_API_KEY не задан (например, локально), код просто пишется
-в лог — почту слать некуда, но проверить флоу можно.
+Вход — классический, по почте и паролю. Одноразовый 6-значный код на почту
+(через Brevo, действует 10 минут) нужен только один раз: сразу после
+регистрации, чтобы подтвердить, что почта реально твоя — отдельного «входа
+по коду» на каждый раз нет. Если BREVO_API_KEY не задан (например, локально),
+код просто пишется в лог — почту слать некуда, но проверить флоу можно.
 
 Подбор собеседника держим в памяти процесса (WebMatchmaker), как и в боте
 (bot/matchmaking.py): очередь и пары меняются каждую секунду, в БД их хранить
@@ -29,8 +31,20 @@ logger = logging.getLogger(__name__)
 
 MAX_NAME_LEN = 80
 MAX_MESSAGE_LEN = 2000
+MIN_PASSWORD_LEN = 6
 GENDERS = {"male", "female"}
 PREFERENCES = {"any", "same", "opposite"}
+
+
+def _hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
+    return digest, salt
+
+
+def _verify_password(password: str, salt: str, expected_hash: str) -> bool:
+    digest, _ = _hash_password(password, salt)
+    return hmac.compare_digest(digest, expected_hash)
 
 OTP_TTL_SECONDS = 600
 OTP_MAX_ATTEMPTS = 5
@@ -166,11 +180,14 @@ def require_session(request: web.Request) -> int:
 
 
 async def register(request: web.Request) -> web.Response:
+    """Создаёт аккаунт (неподтверждённый) и сразу шлёт код на почту — подтвердить
+    его нужно один раз через /api/chat/otp/verify, чтобы получить токен и войти."""
     data = await read_json_body(request)
     first_name = str(data.get("first_name", "")).strip()[:MAX_NAME_LEN]
     last_name = str(data.get("last_name", "")).strip()[:MAX_NAME_LEN]
     phone = _normalize_phone(str(data.get("phone", "")))
     email = _normalize_email(str(data.get("email", "")))
+    password = str(data.get("password", ""))
     gender = str(data.get("gender", "")).strip().lower()
 
     if not first_name or not last_name:
@@ -179,6 +196,8 @@ async def register(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="invalid phone")
     if not _valid_email(email):
         raise web.HTTPBadRequest(reason="invalid email")
+    if len(password) < MIN_PASSWORD_LEN:
+        raise web.HTTPBadRequest(reason=f"password must be at least {MIN_PASSWORD_LEN} characters")
     if gender not in GENDERS:
         raise web.HTTPBadRequest(reason="gender must be male or female")
 
@@ -186,17 +205,39 @@ async def register(request: web.Request) -> web.Response:
     if db.get_web_user_by_phone(phone) is not None or db.get_web_user_by_email(email) is not None:
         raise web.HTTPConflict(reason="phone or email already registered")
 
-    user_id = db.create_web_user(first_name, last_name, phone, email, gender)
+    password_hash, salt = _hash_password(password)
+    db.create_web_user(first_name, last_name, phone, email, password_hash, salt, gender)
+
+    code = _generate_otp()
+    db.save_otp_code(email, _hash_otp(code), _otp_expiry_iso())
+    await _send_otp_email(request.app, email, code)
+    return web.json_response({"ok": True, "email": email}, status=201)
+
+
+async def login(request: web.Request) -> web.Response:
+    data = await read_json_body(request)
+    email = _normalize_email(str(data.get("email", "")))
+    password = str(data.get("password", ""))
+
+    db: Database = request.app["db"]
+    row = db.get_web_user_by_email(email)
+    if row is None or not _verify_password(password, row["password_salt"], row["password_hash"]):
+        raise web.HTTPUnauthorized(reason="invalid email or password")
+    if row["banned"]:
+        raise web.HTTPForbidden(reason="banned")
+    if not row["email_verified"]:
+        raise web.HTTPForbidden(reason="email not verified")
+
     token = secrets.token_urlsafe(32)
-    db.create_web_session(token, user_id)
+    db.create_web_session(token, row["id"])
     return web.json_response(
-        {"ok": True, "token": token, "user": {"id": user_id, "first_name": first_name, "gender": gender}},
-        status=201,
+        {"ok": True, "token": token, "user": {"id": row["id"], "first_name": row["first_name"], "gender": row["gender"]}}
     )
 
 
 async def otp_request(request: web.Request) -> web.Response:
-    """Шаг 1 входа: сгенерировать код и отправить на почту (Brevo)."""
+    """Повторно шлёт код подтверждения на почту — нужен, если первый код истёк
+    или потерялся, письмо не пришло и т.п."""
     data = await read_json_body(request)
     email = _normalize_email(str(data.get("email", "")))
     if not _valid_email(email):
@@ -216,7 +257,7 @@ async def otp_request(request: web.Request) -> web.Response:
 
 
 async def otp_verify(request: web.Request) -> web.Response:
-    """Шаг 2 входа: проверить код, выдать токен сессии."""
+    """Подтверждает почту кодом из письма и сразу выдаёт токен сессии (как логин)."""
     data = await read_json_body(request)
     email = _normalize_email(str(data.get("email", "")))
     code = str(data.get("code", "")).strip()
@@ -235,6 +276,7 @@ async def otp_verify(request: web.Request) -> web.Response:
     if row is None:
         raise web.HTTPNotFound(reason="user not found")
     db.clear_otp_code(email)
+    db.mark_web_email_verified(email)
 
     token = secrets.token_urlsafe(32)
     db.create_web_session(token, row["id"])
@@ -346,6 +388,7 @@ def register_routes(app: web.Application, brevo_api_key: str = "", brevo_sender_
     app["brevo_sender_email"] = brevo_sender_email
     app["brevo_sender_name"] = brevo_sender_name
     app.router.add_post("/api/chat/register", register)
+    app.router.add_post("/api/chat/login", login)
     app.router.add_post("/api/chat/otp/request", otp_request)
     app.router.add_post("/api/chat/otp/verify", otp_verify)
     app.router.add_post("/api/chat/logout", logout)

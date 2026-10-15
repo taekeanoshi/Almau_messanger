@@ -3,6 +3,7 @@ import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
 
+import bot.web_chat as web_chat_module
 from bot.api import build_app
 from bot.config import BASE_DIR
 from bot.content import Content
@@ -89,7 +90,14 @@ def test_stats_reports_leads_count():
     run(go())
 
 
-def test_post_event_going_requires_a_registered_account():
+def test_post_event_going_requires_a_registered_account(monkeypatch):
+    sent = {}
+
+    async def fake_send(app, to_email, code):
+        sent[to_email] = code
+
+    monkeypatch.setattr(web_chat_module, "_send_otp_email", fake_send)
+
     async def go():
         client, db, content = make_client()
         async with client:
@@ -99,11 +107,13 @@ def test_post_event_going_requires_a_registered_account():
             resp = await client.post(f"/api/events/{ev.id}/going", json={"going": True})
             assert resp.status == 401
 
-            reg = await client.post("/api/chat/register", json={
+            await client.post("/api/chat/register", json={
                 "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
-                "email": "ayan@example.com", "gender": "male",
+                "email": "ayan@example.com", "password": "secret1", "gender": "male",
             })
-            token = (await reg.json())["token"]
+            verify = await client.post("/api/chat/otp/verify",
+                                       json={"email": "ayan@example.com", "code": sent["ayan@example.com"]})
+            token = (await verify.json())["token"]
             headers = {"Authorization": f"Bearer {token}"}
 
             resp = await client.post(f"/api/events/{ev.id}/going", json={"going": True}, headers=headers)

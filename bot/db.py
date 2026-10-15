@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS web_users (
     last_name     TEXT NOT NULL,
     phone         TEXT NOT NULL UNIQUE,
     email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,  -- код из письма подтверждён хотя бы раз
     gender        TEXT NOT NULL,          -- 'male' | 'female'
     banned        INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
@@ -226,12 +229,13 @@ class Database:
 
     # ---------- веб-чат: аккаунты, сессии, диалоги (отдельно от Telegram-бота) ----------
 
-    def create_web_user(self, first_name: str, last_name: str, phone: str, email: str, gender: str) -> int:
+    def create_web_user(self, first_name: str, last_name: str, phone: str, email: str,
+                         password_hash: str, password_salt: str, gender: str) -> int:
         with self.conn:
             cur = self.conn.execute(
-                """INSERT INTO web_users (first_name, last_name, phone, email, gender, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (first_name, last_name, phone, email, gender, _now()),
+                """INSERT INTO web_users (first_name, last_name, phone, email, password_hash, password_salt, gender, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (first_name, last_name, phone, email, password_hash, password_salt, gender, _now()),
             )
         return cur.lastrowid
 
@@ -243,6 +247,10 @@ class Database:
 
     def get_web_user(self, user_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM web_users WHERE id = ?", (user_id,)).fetchone()
+
+    def mark_web_email_verified(self, email: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE web_users SET email_verified = 1 WHERE email = ?", (email,))
 
     # ---------- одноразовые коды для входа по почте ----------
 
