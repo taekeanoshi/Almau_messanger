@@ -94,7 +94,7 @@ class WebMatchmaker:
         return partner_id
 
 
-async def _body(request: web.Request) -> dict:
+async def read_json_body(request: web.Request) -> dict:
     try:
         data = await request.json()
     except ValueError:
@@ -104,7 +104,7 @@ async def _body(request: web.Request) -> dict:
     return data
 
 
-def _auth(request: web.Request) -> int:
+def require_session(request: web.Request) -> int:
     """id веб-пользователя по заголовку Authorization: Bearer <token>."""
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not token:
@@ -117,7 +117,7 @@ def _auth(request: web.Request) -> int:
 
 
 async def register(request: web.Request) -> web.Response:
-    data = await _body(request)
+    data = await read_json_body(request)
     first_name = str(data.get("first_name", "")).strip()[:MAX_NAME_LEN]
     last_name = str(data.get("last_name", "")).strip()[:MAX_NAME_LEN]
     phone = _normalize_phone(str(data.get("phone", "")))
@@ -148,7 +148,7 @@ async def register(request: web.Request) -> web.Response:
 
 
 async def login(request: web.Request) -> web.Response:
-    data = await _body(request)
+    data = await read_json_body(request)
     phone = _normalize_phone(str(data.get("phone", "")))
     password = str(data.get("password", ""))
 
@@ -167,7 +167,7 @@ async def login(request: web.Request) -> web.Response:
 
 
 async def logout(request: web.Request) -> web.Response:
-    user_id = _auth(request)
+    user_id = require_session(request)
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     request.app["db"].delete_web_session(token)
     request.app["web_mm"].leave(user_id)
@@ -175,7 +175,7 @@ async def logout(request: web.Request) -> web.Response:
 
 
 async def me(request: web.Request) -> web.Response:
-    user_id = _auth(request)
+    user_id = require_session(request)
     row = request.app["db"].get_web_user(user_id)
     if row is None:
         raise web.HTTPUnauthorized(reason="user not found")
@@ -195,14 +195,14 @@ def _start_search(request: web.Request, user_id: int, preference: str) -> dict:
 
 
 async def search(request: web.Request) -> web.Response:
-    user_id = _auth(request)
-    data = await _body(request)
+    user_id = require_session(request)
+    data = await read_json_body(request)
     preference = str(data.get("preference", "any")).strip().lower()
     return web.json_response(_start_search(request, user_id, preference))
 
 
 async def poll(request: web.Request) -> web.Response:
-    user_id = _auth(request)
+    user_id = require_session(request)
     mm: WebMatchmaker = request.app["web_mm"]
     state = mm.status(user_id)
     if state["status"] != "matched":
@@ -219,8 +219,8 @@ async def poll(request: web.Request) -> web.Response:
 
 
 async def send(request: web.Request) -> web.Response:
-    user_id = _auth(request)
-    data = await _body(request)
+    user_id = require_session(request)
+    data = await read_json_body(request)
     dialog_id = str(data.get("dialog_id", "")).strip()
     text = str(data.get("text", "")).strip()[:MAX_MESSAGE_LEN]
     if not text:
@@ -236,7 +236,7 @@ async def send(request: web.Request) -> web.Response:
 
 
 async def _leave(request: web.Request, requeue: bool) -> web.Response:
-    user_id = _auth(request)
+    user_id = require_session(request)
     request.app["web_mm"].leave(user_id)
     if not requeue:
         return web.json_response({"status": "idle"})

@@ -40,6 +40,8 @@ button.btn:disabled{opacity:.6;cursor:default}
 a:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
 section{padding:56px 0}
 .page{display:none}.page.on{display:block}
+/* [hidden] должен побеждать display:grid/flex классов вроде .lead — иначе скрытая форма всё равно видна */
+[hidden]{display:none!important}
 /* hero */
 .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:64px 0 40px}
 .hero h1{font-size:clamp(34px,5.6vw,68px);font-weight:800;letter-spacing:-.02em}
@@ -376,20 +378,8 @@ document.querySelectorAll("[data-bot]").forEach(a => a.href = botLink());
 // После деплоя заменить на свой домен вида https://<проект>.up.railway.app — см. README → раздел «API».
 const API = "https://almaumessanger-production.up.railway.app";
 
-// Анонимный id посетителя сайта для кнопки «Иду» — живёт в localStorage браузера,
-// с Telegram и профилем в боте никак не связан.
-function visitorId() {
-  try {
-    let id = localStorage.getItem("almau_visitor");
-    if (!id) {
-      id = crypto.randomUUID ? crypto.randomUUID() : `v${Date.now()}${Math.random().toString(16).slice(2)}`;
-      localStorage.setItem("almau_visitor", id);
-    }
-    return id;
-  } catch {
-    return "anon";
-  }
-}
+// Подпись кнопки «Иду» между перезагрузками страницы — просто UX-подсказка,
+// реальная проверка и подсчёт всегда идут через авторизованный запрос на сервер.
 const isGoingLocally = id => { try { return localStorage.getItem("going:" + id) === "1"; } catch { return false; } };
 const setGoingLocally = (id, going) => { try { localStorage.setItem("going:" + id, going ? "1" : "0"); } catch {} };
 
@@ -431,19 +421,24 @@ function eventTile(e) {
     </div></article>`;
 }
 
-// Клик по «Отметиться, что иду» шлёт отметку прямо в API сайта — без Telegram.
+// Клик по «Отметиться, что иду» шлёт отметку прямо в API сайта — без Telegram,
+// но требует аккаунт из вкладки «Анонимный чат» (анонимно отмечаться больше нельзя).
 document.addEventListener("click", async e => {
   const btn = e.target.closest(".going-btn");
   if (!btn) return;
+  if (!chatToken) {
+    alert("Чтобы отметиться на ивент, сначала войдите или зарегистрируйтесь во вкладке «Анонимный чат».");
+    location.hash = "#chat";
+    return;
+  }
   const tile = btn.closest(".tile");
   const id = tile.dataset.id;
   const going = btn.dataset.going !== "1";
   btn.disabled = true;
   try {
-    const r = await fetch(`${API}/api/events/${encodeURIComponent(id)}/going`, {
+    const r = await chatFetch(`/api/events/${encodeURIComponent(id)}/going`, {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({visitor_id: visitorId(), going}),
+      body: JSON.stringify({going}),
     });
     if (!r.ok) throw new Error("going");
     const data = await r.json();

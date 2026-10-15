@@ -13,6 +13,7 @@ from aiohttp import web
 
 from bot.content import Content
 from bot.db import Database
+from bot.web_chat import read_json_body, require_session
 from bot.web_chat import register_routes as register_web_chat_routes
 
 logger = logging.getLogger(__name__)
@@ -106,26 +107,20 @@ async def get_stats(request: web.Request) -> web.Response:
 
 
 async def post_event_going(request: web.Request) -> web.Response:
-    """Отметка «Иду» прямо с сайта, без Telegram. Посетитель узнаётся по anonymous visitor_id
-    (сайт хранит его в localStorage), поэтому работает даже когда API не связан с ботом."""
+    """Отметка «Иду» доступна только зарегистрированным в веб-чате пользователям сайта
+    (require_session бросит 401 без валидного токена). Это готовит данные к тому, чтобы
+    позже показывать клубам-организаторам реальные имена идущих, а не анонимные визиты."""
     content: Content = request.app["content"]
     db: Database = request.app["db"]
     event_id = request.match_info["event_id"]
     if content.event(event_id) is None:
         raise web.HTTPNotFound(reason="event not found")
-    try:
-        data = await request.json()
-    except ValueError:
-        raise web.HTTPBadRequest(reason="invalid json")
-    if not isinstance(data, dict):
-        raise web.HTTPBadRequest(reason="invalid json")
 
-    visitor_id = str(data.get("visitor_id", "")).strip()[:100]
-    if not visitor_id:
-        raise web.HTTPBadRequest(reason="visitor_id is required")
+    user_id = require_session(request)
+    data = await read_json_body(request)
     going = bool(data.get("going", True))
 
-    db.set_going(f"web:{visitor_id}", event_id, going)
+    db.set_going(f"webuser:{user_id}", event_id, going)
     return web.json_response({"ok": True, "going": going, "count": db.going_count(event_id)})
 
 
