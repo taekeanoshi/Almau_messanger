@@ -13,6 +13,7 @@ from aiohttp import web
 
 from bot.content import Content
 from bot.db import Database
+from bot.web_chat import register_routes as register_web_chat_routes
 
 logger = logging.getLogger(__name__)
 
@@ -194,4 +195,5 @@ def build_app(db: Database, content: Content, bot: Bot | None = None,
     app.router.add_get("/api/stats", get_stats)
     app.router.add_post("/api/leads", post_lead)
     app.router.add_get("/api/leads", get_leads)
+    register_web_chat_routes(app)
     return app

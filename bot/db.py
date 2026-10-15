@@ -42,6 +42,35 @@ CREATE TABLE IF NOT EXISTS site_leads (
     event_id    TEXT,
     created_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS web_users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name    TEXT NOT NULL,
+    last_name     TEXT NOT NULL,
+    phone         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    gender        TEXT NOT NULL,          -- 'male' | 'female'
+    banned        INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS web_sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS web_dialogs (
+    dialog_id   TEXT PRIMARY KEY,
+    user_a      INTEGER NOT NULL,
+    user_b      INTEGER NOT NULL,
+    started_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS web_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    dialog_id   TEXT NOT NULL,
+    sender_id   INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
 """
 
 
@@ -147,6 +176,8 @@ class Database:
             "event_dialogs": q("SELECT COUNT(*) FROM dialogs WHERE event_id IS NOT NULL"),
             "reports": q("SELECT COUNT(*) FROM reports"),
             "leads": q("SELECT COUNT(*) FROM site_leads"),
+            "web_users": q("SELECT COUNT(*) FROM web_users"),
+            "web_dialogs": q("SELECT COUNT(*) FROM web_dialogs"),
         }
 
     # ---------- ивенты ----------
@@ -185,4 +216,55 @@ class Database:
     def recent_leads(self, limit: int = 10) -> list[sqlite3.Row]:
         return self.conn.execute(
             "SELECT * FROM site_leads ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+
+    # ---------- веб-чат: аккаунты, сессии, диалоги (отдельно от Telegram-бота) ----------
+
+    def create_web_user(self, first_name: str, last_name: str, phone: str,
+                         password_hash: str, password_salt: str, gender: str) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO web_users (first_name, last_name, phone, password_hash, password_salt, gender, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (first_name, last_name, phone, password_hash, password_salt, gender, _now()),
+            )
+        return cur.lastrowid
+
+    def get_web_user_by_phone(self, phone: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM web_users WHERE phone = ?", (phone,)).fetchone()
+
+    def get_web_user(self, user_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM web_users WHERE id = ?", (user_id,)).fetchone()
+
+    def create_web_session(self, token: str, user_id: int) -> None:
+        with self.conn:
+            self.conn.execute("INSERT INTO web_sessions (token, user_id, created_at) VALUES (?, ?, ?)",
+                              (token, user_id, _now()))
+
+    def web_session_user(self, token: str) -> int | None:
+        row = self.conn.execute("SELECT user_id FROM web_sessions WHERE token = ?", (token,)).fetchone()
+        return row["user_id"] if row else None
+
+    def delete_web_session(self, token: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM web_sessions WHERE token = ?", (token,))
+
+    def create_web_dialog(self, dialog_id: str, user_a: int, user_b: int) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO web_dialogs (dialog_id, user_a, user_b, started_at) VALUES (?, ?, ?, ?)",
+                (dialog_id, user_a, user_b, _now()),
+            )
+
+    def add_web_message(self, dialog_id: str, sender_id: int, text: str) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO web_messages (dialog_id, sender_id, text, created_at) VALUES (?, ?, ?, ?)",
+                (dialog_id, sender_id, text, _now()),
+            )
+        return cur.lastrowid
+
+    def web_messages_since(self, dialog_id: str, since_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM web_messages WHERE dialog_id = ? AND id > ? ORDER BY id", (dialog_id, since_id)
         ).fetchall()
