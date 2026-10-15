@@ -102,7 +102,28 @@ class Database:
         self.conn = sqlite3.connect(path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.hikes = HikeStore(self.conn)   # походы партнёрского клуба, см. bot/hikes.py
+
+    def _migrate(self) -> None:
+        """CREATE TABLE IF NOT EXISTS не трогает уже существующую таблицу, даже если её
+        схема устарела (например, БД пережила деплой со старой структурой web_users).
+        Добираем недостающие колонки через ALTER TABLE, чтобы запись не падала с
+        'no such column' на расхождении схемы."""
+        column_migrations = {
+            "web_users": {
+                "email": "ALTER TABLE web_users ADD COLUMN email TEXT",
+                "password_hash": "ALTER TABLE web_users ADD COLUMN password_hash TEXT",
+                "password_salt": "ALTER TABLE web_users ADD COLUMN password_salt TEXT",
+                "email_verified": "ALTER TABLE web_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0",
+            },
+        }
+        with self.conn:
+            for table, migrations in column_migrations.items():
+                existing = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+                for column, sql in migrations.items():
+                    if column not in existing:
+                        self.conn.execute(sql)
 
     # ---------- профиль ----------
 

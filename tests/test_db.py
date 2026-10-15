@@ -1,3 +1,5 @@
+import sqlite3
+
 from bot.db import Database
 
 
@@ -45,3 +47,31 @@ def test_going_and_stats():
     db.log_dialog(1, 2, "halloween")
     s = db.stats()
     assert s["users"] == 2 and s["dialogs_total"] == 2 and s["dialogs_today"] == 2 and s["event_dialogs"] == 1
+
+
+def test_opening_db_with_outdated_web_users_schema_adds_missing_columns(tmp_path):
+    """Имитирует БД, пережившую деплой со старой схемой web_users (например, без email,
+    password_hash/password_salt или email_verified) — Database должен сам доковать колонки,
+    а не падать на INSERT с 'no such column'."""
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE web_users (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name  TEXT NOT NULL,
+            last_name   TEXT NOT NULL,
+            phone       TEXT NOT NULL UNIQUE,
+            gender      TEXT NOT NULL,
+            banned      INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+    db = Database(db_path)
+    user_id = db.create_web_user("Хамит", "Хасанов", "+77001234567", "hamit@example.com",
+                                 "hash", "salt", "male")
+    row = db.get_web_user(user_id)
+    assert row["email"] == "hamit@example.com"
+    assert row["email_verified"] == 0
