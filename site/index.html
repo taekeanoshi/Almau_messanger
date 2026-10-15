@@ -311,16 +311,17 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
     <button type="button" class="authtab" data-authtab="register">Регистрация</button>
    </div>
    <form class="lead" id="login-form">
-    <input name="phone" placeholder="Телефон" required autocomplete="tel">
-    <input name="password" type="password" placeholder="Пароль" required autocomplete="current-password">
-    <button class="btn" type="submit">Войти</button>
+    <input name="email" type="email" id="login-email" placeholder="Почта" required autocomplete="email">
+    <button class="btn ghost" type="button" id="otp-request-btn">Получить код на почту</button>
+    <input name="code" id="login-code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" autocomplete="one-time-code" hidden>
+    <button class="btn" type="submit" id="otp-verify-btn" hidden>Войти по коду</button>
     <p class="lead-status" id="login-status"></p>
    </form>
    <form class="lead" id="register-form" hidden>
     <input name="first_name" placeholder="Имя" required maxlength="80" autocomplete="given-name">
     <input name="last_name" placeholder="Фамилия" required maxlength="80" autocomplete="family-name">
     <input name="phone" placeholder="Телефон" required autocomplete="tel">
-    <input name="password" type="password" placeholder="Пароль (мин. 6 символов)" required minlength="6" autocomplete="new-password">
+    <input name="email" type="email" placeholder="Почта" required autocomplete="email">
     <div class="gender-pick">
      <label><input type="radio" name="gender" value="male" required> Парень</label>
      <label><input type="radio" name="gender" value="female" required> Девушка</label>
@@ -751,10 +752,72 @@ async function startChatSearch() {
   } catch {}
 }
 
+function initLoginOtp() {
+  const emailInput = document.getElementById("login-email");
+  const requestBtn = document.getElementById("otp-request-btn");
+  const codeInput = document.getElementById("login-code");
+  const verifyBtn = document.getElementById("otp-verify-btn");
+  const status = document.getElementById("login-status");
+  const form = document.getElementById("login-form");
+
+  requestBtn.addEventListener("click", async () => {
+    const email = emailInput.value.trim();
+    if (!email) { status.textContent = "Введите почту."; return; }
+    status.textContent = "Отправляем код…";
+    requestBtn.disabled = true;
+    try {
+      const r = await fetch(API + "/api/chat/otp/request", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email}),
+      });
+      if (!r.ok) {
+        status.textContent = r.status === 404 ? "Такая почта не зарегистрирована." : "Не получилось отправить код.";
+        return;
+      }
+      status.textContent = "Код отправлен на почту.";
+      codeInput.hidden = false;
+      verifyBtn.hidden = false;
+      requestBtn.textContent = "Отправить код ещё раз";
+      codeInput.focus();
+    } catch {
+      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
+    } finally {
+      requestBtn.disabled = false;
+    }
+  });
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = emailInput.value.trim();
+    const code = codeInput.value.trim();
+    if (!code) return;
+    status.textContent = "Проверяем код…";
+    try {
+      const r = await fetch(API + "/api/chat/otp/verify", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({email, code}),
+      });
+      if (!r.ok) {
+        status.textContent = r.status === 403 ? "Слишком много попыток — запросите новый код."
+          : "Неверный или устаревший код.";
+        return;
+      }
+      const body = await r.json();
+      saveChatSession(body.token, body.user);
+      status.textContent = "";
+      form.reset();
+      codeInput.hidden = true;
+      verifyBtn.hidden = true;
+      requestBtn.textContent = "Получить код на почту";
+      chatSection("chat-search");
+    } catch {
+      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
+    }
+  });
+}
+
 function initChat() {
   loadChatSession();
   initAuthTabs();
-  handleAuthForm(document.getElementById("login-form"), "/api/chat/login", "login-status");
+  initLoginOtp();
   handleAuthForm(document.getElementById("register-form"), "/api/chat/register", "register-status");
 
   document.getElementById("search-btn").addEventListener("click", startChatSearch);

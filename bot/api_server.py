@@ -30,11 +30,17 @@ async def main() -> None:
     port = int(os.getenv("PORT", "8080"))
     cors_origin = os.getenv("CORS_ORIGIN", "*")
     admin_token = os.getenv("ADMIN_TOKEN", "")
+    brevo_api_key = os.getenv("BREVO_API_KEY", "")
+    brevo_sender_email = os.getenv("BREVO_SENDER_EMAIL", "")
+    brevo_sender_name = os.getenv("BREVO_SENDER_NAME", "Almau Messenger")
 
     db, content = Database(db_path), Content(data_dir)
     db.hikes.seed(content.hikes_seed)
     app = build_app(db, content, bot=None, admin_ids=frozenset(), cors_origin=cors_origin,
-                     admin_token=admin_token)
+                     admin_token=admin_token, brevo_api_key=brevo_api_key,
+                     brevo_sender_email=brevo_sender_email, brevo_sender_name=brevo_sender_name)
+    if not brevo_api_key or not brevo_sender_email:
+        logger.warning("BREVO_API_KEY/BREVO_SENDER_EMAIL не заданы — коды входа будут только в логах, письма не пойдут")
 
     runner = web.AppRunner(app)
     await runner.setup()

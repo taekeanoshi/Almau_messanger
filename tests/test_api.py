@@ -101,7 +101,7 @@ def test_post_event_going_requires_a_registered_account():
 
             reg = await client.post("/api/chat/register", json={
                 "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
-                "password": "secret1", "gender": "male",
+                "email": "ayan@example.com", "gender": "male",
             })
             token = (await reg.json())["token"]
             headers = {"Authorization": f"Bearer {token}"}

@@ -173,7 +173,8 @@ async def get_leads(request: web.Request) -> web.Response:
 
 def build_app(db: Database, content: Content, bot: Bot | None = None,
               admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
-              admin_token: str = "") -> web.Application:
+              admin_token: str = "", brevo_api_key: str = "", brevo_sender_email: str = "",
+              brevo_sender_name: str = "Almau Messenger") -> web.Application:
     app = web.Application(middlewares=[_cors_middleware(cors_origin)])
     app["db"] = db
     app["content"] = content
@@ -190,5 +191,6 @@ def build_app(db: Database, content: Content, bot: Bot | None = None,
     app.router.add_get("/api/stats", get_stats)
     app.router.add_post("/api/leads", post_lead)
     app.router.add_get("/api/leads", get_leads)
-    register_web_chat_routes(app)
+    register_web_chat_routes(app, brevo_api_key=brevo_api_key, brevo_sender_email=brevo_sender_email,
+                             brevo_sender_name=brevo_sender_name)
     return app
