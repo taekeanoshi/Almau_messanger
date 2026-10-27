@@ -95,6 +95,10 @@ python -m bot.main
      можно временно оставить `*`.
    - `ADMIN_TOKEN` — свой произвольный секрет, чтобы читать заявки через `GET /api/leads`
      без бота (см. раздел [API](#api)).
+   - `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` — вход в «Анонимный чат» на сайте идёт по коду
+     на почту через [Brevo](https://brevo.com) (300 писем/день бесплатно). Регистрация,
+     подтверждённый отправитель (Senders → Add a sender) и API-ключ (SMTP & API → API Keys) —
+     за пару минут. Без них код виден только в логах сервиса, письма не уходят.
    - `BOT_TOKEN` и `ADMIN_IDS` этому сервису не нужны вообще.
 4. **Settings → Networking → Generate Domain** — обязательно, без публичного домена сайт
    не достучится до API. Railway сам передаёт порт через `$PORT`.
@@ -117,10 +121,19 @@ python -m bot.main
 | GET | `/api/clubs` | список клубов из `content.py` |
 | GET | `/api/events` | список ивентов + живое число «Иду» из БД |
 | GET | `/api/events/{id}` | один ивент, 404 если не найден |
-| POST | `/api/events/{id}/going` | отметка «Иду» прямо с сайта: `{"visitor_id", "going"}`, без Telegram |
-| GET | `/api/stats` | публичная статистика: пользователи, диалоги, заявки |
+| POST | `/api/events/{id}/going` | отметка «Иду» прямо с сайта — требует вход в аккаунт (`Authorization: Bearer <token>`) |
+| GET | `/api/stats` | публичная статистика: пользователи, диалоги, заявки, аккаунты и диалоги чата |
 | POST | `/api/leads` | сохраняет заявку с формы сайта (`name`, `contact`, `message`, опц. `event_id`) в БД |
 | GET | `/api/leads?token=<ADMIN_TOKEN>` | просмотр последних заявок без бота (401 без правильного токена) |
+| POST | `/api/chat/register` | аккаунт в «Анонимном чате»: `first_name`, `last_name`, `phone`, `email`, `gender` — выдаёт токен сразу |
+| POST | `/api/chat/otp/request` | `{"email"}` — шлёт 6-значный код на почту, действует 10 минут |
+| POST | `/api/chat/otp/verify` | `{"email", "code"}` — вход по коду, выдаёт токен сессии |
+| POST | `/api/chat/logout` | завершает сессию по текущему токену |
+| GET | `/api/chat/me` | данные текущего пользователя по токену |
+| POST | `/api/chat/search` | `{"preference": "any"\|"same"\|"opposite"}` — встать в очередь/найти собеседника по полу |
+| GET | `/api/chat/poll?since=<id>` | опрос раз в 2.5 сек: статус (`idle`/`waiting`/`matched`) и новые сообщения |
+| POST | `/api/chat/send` | `{"dialog_id", "text"}` — отправить сообщение в активном диалоге |
+| POST | `/api/chat/next` / `/api/chat/stop` | закончить диалог и (не)встать в поиск заново |
 
 Проверить локально после `python -m bot.api_server`:
 

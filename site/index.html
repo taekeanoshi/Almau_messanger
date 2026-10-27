@@ -6,6 +6,12 @@
 <title>Мессенджер университета Almau</title>
 <link rel="icon" type="image/png" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#050507">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Almau">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -34,6 +40,8 @@ button.btn:disabled{opacity:.6;cursor:default}
 a:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
 section{padding:56px 0}
 .page{display:none}.page.on{display:block}
+/* [hidden] должен побеждать display:grid/flex классов вроде .lead — иначе скрытая форма всё равно видна */
+[hidden]{display:none!important}
 /* hero */
 .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:64px 0 40px}
 .hero h1{font-size:clamp(34px,5.6vw,68px);font-weight:800;letter-spacing:-.02em}
@@ -123,6 +131,19 @@ details.lesson summary{padding:16px 20px;cursor:pointer;font-weight:700;list-sty
 details.lesson summary::-webkit-details-marker{display:none}
 details.lesson[open] summary{color:var(--acc)}
 details.lesson ul{margin:0;padding:0 20px 18px 40px;color:#dcdce4;display:grid;gap:6px}
+.authbox{max-width:480px;margin:0 auto;display:grid;gap:14px}
+.authtabs{display:flex;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+.authtab{flex:1;border:none;background:transparent;color:var(--mute);padding:10px;border-radius:999px;font:700 14px Manrope;cursor:pointer}
+.authtab.on{background:var(--acc);color:#050507}
+.gender-pick{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.gender-pick label{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;font-size:14px}
+.gender-pick input{accent-color:var(--acc)}
+#chat-box{max-height:60vh;overflow-y:auto}
+.chat-input{display:flex;gap:10px;margin-top:14px}
+.chat-input input{flex:1;background:#0b0b0f;border:1px solid var(--line);border-radius:999px;padding:12px 18px;color:var(--text);font:15px Manrope}
+.chat-input input:focus{outline:2px solid var(--acc);outline-offset:1px}
+.chat-input .btn{border:none;cursor:pointer;padding:12px 22px}
+.empty .btn{margin-top:14px}
 footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding:28px 0 40px}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.feat{grid-template-columns:1fr}.tile.wide{grid-column:auto}}
 @media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{display:none}}
@@ -135,6 +156,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
  <a class="tab" href="#events" data-p="events">Ивенты</a>
  <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
+ <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
  <a class="btn" data-bot href="#" target="_blank" rel="noopener">Открыть бота</a>
 </div></nav>
 
@@ -278,6 +300,73 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <div class="grid" id="events"></div>
  </section>
 </div>
+
+<!-- ЧАТ: анонимный чат прямо на сайте, без Telegram -->
+<div class="page" id="p-chat">
+ <section id="chat-auth">
+  <div class="head"><div><h2>Анонимный чат</h2><p>Зарегистрируйся — мы анонимно соединим тебя с другим студентом. Имя, фамилию и телефон собеседник не видит.</p></div></div>
+  <div class="authbox">
+   <div class="authtabs">
+    <button type="button" class="authtab on" data-authtab="login">Войти</button>
+    <button type="button" class="authtab" data-authtab="register">Регистрация</button>
+   </div>
+   <form class="lead" id="login-form">
+    <input name="email" type="email" placeholder="Почта" required autocomplete="email">
+    <input name="password" type="password" placeholder="Пароль" required autocomplete="current-password">
+    <button class="btn" type="submit">Войти</button>
+    <p class="lead-status" id="login-status"></p>
+   </form>
+   <form class="lead" id="register-form" hidden>
+    <input name="first_name" placeholder="Имя" required maxlength="80" autocomplete="given-name">
+    <input name="last_name" placeholder="Фамилия" required maxlength="80" autocomplete="family-name">
+    <input name="phone" placeholder="Телефон" required autocomplete="tel">
+    <input name="email" type="email" placeholder="Почта" required autocomplete="email">
+    <input name="password" type="password" placeholder="Пароль (мин. 6 символов)" required minlength="6" autocomplete="new-password">
+    <div class="gender-pick">
+     <label><input type="radio" name="gender" value="male" required> Парень</label>
+     <label><input type="radio" name="gender" value="female" required> Девушка</label>
+    </div>
+    <button class="btn" type="submit" id="register-submit-btn">Зарегистрироваться</button>
+    <input name="code" id="register-code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" autocomplete="one-time-code" hidden>
+    <button class="btn" type="button" id="register-verify-btn" hidden>Подтвердить почту</button>
+    <p class="lead-status" id="register-status"></p>
+   </form>
+  </div>
+ </section>
+
+ <section id="chat-search" hidden>
+  <div class="head"><div><h2>Найти собеседника</h2><p>Кого ищешь?</p></div></div>
+  <div class="authbox">
+   <div class="gender-pick">
+    <label><input type="radio" name="preference" value="any" checked> Любой пол</label>
+    <label><input type="radio" name="preference" value="same"> Такой же пол</label>
+    <label><input type="radio" name="preference" value="opposite"> Противоположный пол</label>
+   </div>
+   <div class="actions" style="justify-content:center">
+    <button class="btn" id="search-btn" type="button">🔍 Найти собеседника</button>
+    <button class="btn ghost" id="logout-btn" type="button">Выйти</button>
+   </div>
+  </div>
+ </section>
+
+ <section id="chat-waiting" hidden>
+  <div class="empty">Ищем собеседника…<br><button class="btn ghost sm" id="cancel-search-btn" type="button">Отменить</button></div>
+ </section>
+
+ <section id="chat-room" hidden>
+  <div class="head"><div><h2>Анонимный собеседник</h2><p>Сообщения анонимны — ни твой телефон, ни фамилия ему не видны.</p></div>
+   <div class="actions">
+    <button class="btn ghost sm" id="next-btn" type="button">⏭ Следующий</button>
+    <button class="btn ghost sm" id="stop-btn" type="button">⛔ Стоп</button>
+   </div>
+  </div>
+  <div class="chat" id="chat-box" aria-live="polite"></div>
+  <form class="chat-input" id="send-form">
+   <input name="text" id="chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000">
+   <button class="btn" type="submit">➤</button>
+  </form>
+ </section>
+</div>
 </main>
 
 <footer><div class="wrap">Мессенджер университета Almau — студенческий проект. Не является официальным ресурсом Almaty Management University.</div></footer>
@@ -292,20 +381,8 @@ document.querySelectorAll("[data-bot]").forEach(a => a.href = botLink());
 // После деплоя заменить на свой домен вида https://<проект>.up.railway.app — см. README → раздел «API».
 const API = "https://almaumessanger-production.up.railway.app";
 
-// Анонимный id посетителя сайта для кнопки «Иду» — живёт в localStorage браузера,
-// с Telegram и профилем в боте никак не связан.
-function visitorId() {
-  try {
-    let id = localStorage.getItem("almau_visitor");
-    if (!id) {
-      id = crypto.randomUUID ? crypto.randomUUID() : `v${Date.now()}${Math.random().toString(16).slice(2)}`;
-      localStorage.setItem("almau_visitor", id);
-    }
-    return id;
-  } catch {
-    return "anon";
-  }
-}
+// Подпись кнопки «Иду» между перезагрузками страницы — просто UX-подсказка,
+// реальная проверка и подсчёт всегда идут через авторизованный запрос на сервер.
 const isGoingLocally = id => { try { return localStorage.getItem("going:" + id) === "1"; } catch { return false; } };
 const setGoingLocally = (id, going) => { try { localStorage.setItem("going:" + id, going ? "1" : "0"); } catch {} };
 
@@ -347,19 +424,24 @@ function eventTile(e) {
     </div></article>`;
 }
 
-// Клик по «Отметиться, что иду» шлёт отметку прямо в API сайта — без Telegram.
+// Клик по «Отметиться, что иду» шлёт отметку прямо в API сайта — без Telegram,
+// но требует аккаунт из вкладки «Анонимный чат» (анонимно отмечаться больше нельзя).
 document.addEventListener("click", async e => {
   const btn = e.target.closest(".going-btn");
   if (!btn) return;
+  if (!chatToken) {
+    alert("Чтобы отметиться на ивент, сначала войдите или зарегистрируйтесь во вкладке «Анонимный чат».");
+    location.hash = "#chat";
+    return;
+  }
   const tile = btn.closest(".tile");
   const id = tile.dataset.id;
   const going = btn.dataset.going !== "1";
   btn.disabled = true;
   try {
-    const r = await fetch(`${API}/api/events/${encodeURIComponent(id)}/going`, {
+    const r = await chatFetch(`/api/events/${encodeURIComponent(id)}/going`, {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({visitor_id: visitorId(), going}),
+      body: JSON.stringify({going}),
     });
     if (!r.ok) throw new Error("going");
     const data = await r.json();
@@ -543,9 +625,260 @@ async function loadSummit() {
   }
 }
 
+// ---------- Анонимный чат на сайте (свои аккаунты, без Telegram) ----------
+let chatToken = null, chatUser = null, chatDialogId = null, chatSince = 0, pollTimer = null;
+
+function saveChatSession(token, user) {
+  chatToken = token; chatUser = user;
+  try { localStorage.setItem("chat_token", token); localStorage.setItem("chat_user", JSON.stringify(user)); } catch {}
+}
+function clearChatSession() {
+  chatToken = null; chatUser = null;
+  try { localStorage.removeItem("chat_token"); localStorage.removeItem("chat_user"); } catch {}
+}
+function loadChatSession() {
+  try {
+    const t = localStorage.getItem("chat_token"), u = localStorage.getItem("chat_user");
+    if (t && u) { chatToken = t; chatUser = JSON.parse(u); }
+  } catch {}
+}
+
+function chatSection(id) {
+  ["chat-auth", "chat-search", "chat-waiting", "chat-room"].forEach(s => {
+    document.getElementById(s).hidden = s !== id;
+  });
+}
+
+async function chatFetch(path, opts = {}) {
+  const headers = Object.assign({"Content-Type": "application/json"}, opts.headers || {});
+  if (chatToken) headers.Authorization = `Bearer ${chatToken}`;
+  const r = await fetch(API + path, Object.assign({}, opts, {headers}));
+  if (r.status === 401) { clearChatSession(); stopChatPolling(); chatSection("chat-auth"); throw new Error("unauthorized"); }
+  return r;
+}
+
+function currentPreference() {
+  return document.querySelector('input[name="preference"]:checked')?.value || "any";
+}
+
+function initAuthTabs() {
+  document.querySelectorAll("[data-authtab]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-authtab]").forEach(b => b.classList.toggle("on", b === btn));
+      document.getElementById("login-form").hidden = btn.dataset.authtab !== "login";
+      document.getElementById("register-form").hidden = btn.dataset.authtab !== "register";
+    });
+  });
+}
+
+// Для входа (email+пароль): сервер сразу отдаёт {token, user}.
+function handleLoginForm(form, statusId) {
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const status = document.getElementById(statusId);
+    status.textContent = "Подождите…";
+    const data = Object.fromEntries(new FormData(form).entries());
+    try {
+      const r = await fetch(API + "/api/chat/login", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
+      });
+      if (!r.ok) {
+        const reasons = {
+          401: "Неверная почта или пароль",
+          403: "Почта ещё не подтверждена — проверьте письмо с кодом при регистрации",
+        };
+        status.textContent = reasons[r.status] || "Не получилось войти.";
+        return;
+      }
+      const body = await r.json();
+      saveChatSession(body.token, body.user);
+      status.textContent = "";
+      form.reset();
+      chatSection("chat-search");
+    } catch {
+      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
+    }
+  });
+}
+
+// Регистрация в два шага: 1) создать аккаунт (пароль, без токена) 2) ввести код из письма,
+// чтобы подтвердить почту и получить токен.
+function initRegisterForm() {
+  const form = document.getElementById("register-form");
+  const status = document.getElementById("register-status");
+  const submitBtn = document.getElementById("register-submit-btn");
+  const codeInput = document.getElementById("register-code");
+  const verifyBtn = document.getElementById("register-verify-btn");
+  let pendingEmail = null;
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    status.textContent = "Подождите…";
+    const data = Object.fromEntries(new FormData(form).entries());
+    try {
+      const r = await fetch(API + "/api/chat/register", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
+      });
+      if (!r.ok) {
+        const reasons = {409: "Этот телефон или почта уже зарегистрированы"};
+        status.textContent = reasons[r.status] || "Не получилось. Проверьте данные (имя, телефон, почта, пароль от 6 символов).";
+        return;
+      }
+      const body = await r.json();
+      pendingEmail = body.email;
+      status.textContent = "Код отправлен на почту. Введите его ниже, чтобы подтвердить.";
+      submitBtn.hidden = true;
+      codeInput.hidden = false;
+      verifyBtn.hidden = false;
+      codeInput.focus();
+    } catch {
+      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
+    }
+  });
+
+  verifyBtn.addEventListener("click", async () => {
+    const code = codeInput.value.trim();
+    if (!code || !pendingEmail) return;
+    status.textContent = "Проверяем код…";
+    try {
+      const r = await fetch(API + "/api/chat/otp/verify", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email: pendingEmail, code}),
+      });
+      if (!r.ok) {
+        status.textContent = r.status === 403 ? "Слишком много попыток — зарегистрируйтесь заново."
+          : "Неверный или устаревший код.";
+        return;
+      }
+      const body = await r.json();
+      saveChatSession(body.token, body.user);
+      status.textContent = "";
+      form.reset();
+      submitBtn.hidden = false;
+      codeInput.hidden = true;
+      verifyBtn.hidden = true;
+      pendingEmail = null;
+      chatSection("chat-search");
+    } catch {
+      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
+    }
+  });
+}
+
+function stopChatPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+function startChatPolling() {
+  stopChatPolling();
+  pollTimer = setInterval(pollChat, 2500);
+}
+
+function renderChatMessages(messages) {
+  if (!messages.length) return;
+  const box = document.getElementById("chat-box");
+  for (const m of messages) {
+    const div = document.createElement("div");
+    div.className = "msg " + (m.mine ? "r" : "l");
+    div.textContent = m.text;
+    box.appendChild(div);
+    chatSince = Math.max(chatSince, m.id);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function enterChatRoom(dialogId) {
+  chatDialogId = dialogId;
+  chatSince = 0;
+  document.getElementById("chat-box").innerHTML = "";
+  chatSection("chat-room");
+  startChatPolling();
+}
+
+async function pollChat() {
+  try {
+    const r = await chatFetch(`/api/chat/poll?since=${chatSince}`);
+    const body = await r.json();
+    if (body.status === "matched") {
+      if (chatDialogId !== body.dialog_id) { chatDialogId = body.dialog_id; chatSince = 0; document.getElementById("chat-box").innerHTML = ""; chatSection("chat-room"); }
+      renderChatMessages(body.messages);
+    } else if (body.status === "waiting") {
+      chatSection("chat-waiting");
+    } else if (chatDialogId) {
+      chatDialogId = null;
+      stopChatPolling();
+      chatSection("chat-search");
+      alert("Собеседник завершил диалог.");
+    }
+  } catch {}
+}
+
+async function startChatSearch() {
+  chatSection("chat-waiting");
+  try {
+    const r = await chatFetch("/api/chat/search", {method: "POST", body: JSON.stringify({preference: currentPreference()})});
+    const body = await r.json();
+    if (body.status === "matched") enterChatRoom(body.dialog_id);
+    else startChatPolling();
+  } catch {}
+}
+
+function initChat() {
+  loadChatSession();
+  initAuthTabs();
+  handleLoginForm(document.getElementById("login-form"), "login-status");
+  initRegisterForm();
+
+  document.getElementById("search-btn").addEventListener("click", startChatSearch);
+  document.getElementById("cancel-search-btn").addEventListener("click", async () => {
+    stopChatPolling();
+    try { await chatFetch("/api/chat/stop", {method: "POST"}); } catch {}
+    chatSection("chat-search");
+  });
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    try { await chatFetch("/api/chat/logout", {method: "POST"}); } catch {}
+    clearChatSession();
+    stopChatPolling();
+    chatSection("chat-auth");
+  });
+  document.getElementById("next-btn").addEventListener("click", async () => {
+    const preference = currentPreference();
+    stopChatPolling();
+    chatDialogId = null;
+    chatSection("chat-waiting");
+    try {
+      const r = await chatFetch("/api/chat/next", {method: "POST", body: JSON.stringify({preference})});
+      const body = await r.json();
+      if (body.status === "matched") enterChatRoom(body.dialog_id);
+      else startChatPolling();
+    } catch {}
+  });
+  document.getElementById("stop-btn").addEventListener("click", async () => {
+    stopChatPolling();
+    chatDialogId = null;
+    try { await chatFetch("/api/chat/stop", {method: "POST"}); } catch {}
+    chatSection("chat-search");
+  });
+  document.getElementById("send-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const input = document.getElementById("chat-text");
+    const text = input.value;
+    if (!text.trim() || !chatDialogId) return;
+    input.value = "";
+    chatFetch("/api/chat/send", {method: "POST", body: JSON.stringify({dialog_id: chatDialogId, text})})
+      .then(pollChat).catch(() => {});
+  });
+
+  if (!chatToken) { chatSection("chat-auth"); return; }
+  chatSection("chat-search");
+  chatFetch("/api/chat/poll").then(r => r.json()).then(body => {
+    if (body.status === "matched") enterChatRoom(body.dialog_id);
+    else if (body.status === "waiting") { chatSection("chat-waiting"); startChatPolling(); }
+  }).catch(() => {});
+}
+
 function route() {
   const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events", "summit"].includes(p) ? p : "home";
+  const id = ["home", "clubs", "events", "summit", "chat"].includes(p) ? p : "home";
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
   window.scrollTo(0, 0);
@@ -556,6 +889,14 @@ route();
 load();
 loadStats();
 initLeadForm();
+initChat();
+
+// Регистрация service worker — без него Android не предложит "Установить приложение"
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
 </script>
 </body>
 </html>

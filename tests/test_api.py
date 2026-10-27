@@ -3,6 +3,7 @@ import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
 
+import bot.web_chat as web_chat_module
 from bot.api import build_app
 from bot.config import BASE_DIR
 from bot.content import Content
@@ -89,33 +90,47 @@ def test_stats_reports_leads_count():
     run(go())
 
 
-def test_post_event_going_works_without_telegram():
+def test_post_event_going_requires_a_registered_account(monkeypatch):
+    sent = {}
+
+    async def fake_send(app, to_email, code):
+        sent[to_email] = code
+
+    monkeypatch.setattr(web_chat_module, "_send_otp_email", fake_send)
+
     async def go():
         client, db, content = make_client()
         async with client:
             ev = content.events[0]
 
-            resp = await client.post(f"/api/events/{ev.id}/going",
-                                     json={"visitor_id": "abc123", "going": True})
+            # Без токена — 401, анонимно отметиться больше нельзя
+            resp = await client.post(f"/api/events/{ev.id}/going", json={"going": True})
+            assert resp.status == 401
+
+            await client.post("/api/chat/register", json={
+                "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
+                "email": "ayan@example.com", "password": "secret1", "gender": "male",
+            })
+            verify = await client.post("/api/chat/otp/verify",
+                                       json={"email": "ayan@example.com", "code": sent["ayan@example.com"]})
+            token = (await verify.json())["token"]
+            headers = {"Authorization": f"Bearer {token}"}
+
+            resp = await client.post(f"/api/events/{ev.id}/going", json={"going": True}, headers=headers)
             assert resp.status == 200
             body = await resp.json()
             assert body == {"ok": True, "going": True, "count": 1}
-            assert db.is_going("web:abc123", ev.id)
 
-            # Повторная отметка тем же visitor_id не плодит дубликаты
-            await client.post(f"/api/events/{ev.id}/going", json={"visitor_id": "abc123", "going": True})
+            # Повторная отметка тем же аккаунтом не плодит дубликаты
+            await client.post(f"/api/events/{ev.id}/going", json={"going": True}, headers=headers)
             resp = await client.get(f"/api/events/{ev.id}")
             assert (await resp.json())["going"] == 1
 
-            resp = await client.post(f"/api/events/{ev.id}/going",
-                                     json={"visitor_id": "abc123", "going": False})
+            resp = await client.post(f"/api/events/{ev.id}/going", json={"going": False}, headers=headers)
             assert (await resp.json())["count"] == 0
 
-            resp = await client.post("/api/events/does-not-exist/going", json={"visitor_id": "abc123"})
+            resp = await client.post("/api/events/does-not-exist/going", json={"going": True}, headers=headers)
             assert resp.status == 404
-
-            resp = await client.post(f"/api/events/{ev.id}/going", json={"going": True})
-            assert resp.status == 400
 
     run(go())
 

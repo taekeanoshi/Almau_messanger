@@ -31,6 +31,9 @@ class Config:
     admin_token: str = ""
     club_admin_ids: frozenset[int] = frozenset()   # организаторы партнёрского клуба (Summit Seekers)
     telegram_api_url: str = ""                      # свой Bot API сервер или заглушка в тестах; обычно пусто
+    brevo_api_key: str = ""                          # код входа по почте шлётся через Brevo; пусто — код только в логах
+    brevo_sender_email: str = ""                     # подтверждённый отправитель в Brevo
+    brevo_sender_name: str = "Almau Messenger"
 
 
 def load_config() -> Config:
@@ -51,4 +54,7 @@ def load_config() -> Config:
         admin_token=os.getenv("ADMIN_TOKEN", ""),
         club_admin_ids=frozenset(int(x) for x in os.getenv("CLUB_ADMIN_IDS", "").replace(" ", "").split(",") if x),
         telegram_api_url=os.getenv("TELEGRAM_API_URL", ""),
+        brevo_api_key=os.getenv("BREVO_API_KEY", ""),
+        brevo_sender_email=os.getenv("BREVO_SENDER_EMAIL", ""),
+        brevo_sender_name=os.getenv("BREVO_SENDER_NAME", "Almau Messenger"),
     )
