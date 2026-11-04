@@ -32,7 +32,7 @@ async def main() -> None:
     admin_token = os.getenv("ADMIN_TOKEN", "")
     brevo_api_key = os.getenv("BREVO_API_KEY", "")
     brevo_sender_email = os.getenv("BREVO_SENDER_EMAIL", "")
-    brevo_sender_name = os.getenv("BREVO_SENDER_NAME", "Almau Messenger")
+    brevo_sender_name = os.getenv("BREVO_SENDER_NAME", "Pople")
 
     db, content = Database(db_path), Content(data_dir)
     db.hikes.seed(content.hikes_seed)

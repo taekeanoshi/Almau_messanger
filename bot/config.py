@@ -33,7 +33,7 @@ class Config:
     telegram_api_url: str = ""                      # свой Bot API сервер или заглушка в тестах; обычно пусто
     brevo_api_key: str = ""                          # код входа по почте шлётся через Brevo; пусто — код только в логах
     brevo_sender_email: str = ""                     # подтверждённый отправитель в Brevo
-    brevo_sender_name: str = "Almau Messenger"
+    brevo_sender_name: str = "Pople"
 
 
 def load_config() -> Config:
@@ -56,5 +56,5 @@ def load_config() -> Config:
         telegram_api_url=os.getenv("TELEGRAM_API_URL", ""),
         brevo_api_key=os.getenv("BREVO_API_KEY", ""),
         brevo_sender_email=os.getenv("BREVO_SENDER_EMAIL", ""),
-        brevo_sender_name=os.getenv("BREVO_SENDER_NAME", "Almau Messenger"),
+        brevo_sender_name=os.getenv("BREVO_SENDER_NAME", "Pople"),
     )

@@ -1,7 +1,7 @@
 {
-  "name": "Almau Messenger",
-  "short_name": "Almau",
-  "description": "Анонимный чат, клубы и ивенты AlmaU",
+  "name": "Pople",
+  "short_name": "Pople",
+  "description": "Pople — анонимный чат, клубы и ивенты для студентов AlmaU",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

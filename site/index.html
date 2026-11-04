@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Мессенджер университета Almau</title>
+<title>Pople — анонимный чат для студентов AlmaU</title>
 <link rel="icon" type="image/png" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
@@ -11,11 +11,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Almau">
+<meta name="apple-mobile-web-app-title" content="Pople">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#050507;--panel:#101014;--line:#23232b;--text:#f2f2f5;--mute:#8d8d9a;--acc:#d4ff3a;--acc2:#7b5cff;
+:root{--bg:#050507;--panel:#13101c;--line:#2a2436;--text:#f2f2f5;--mute:#9c93ad;--acc:#a78bfa;--acc2:#5b31bd;
  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*:before,*:after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -91,7 +91,7 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .ev .who{font-size:13px;color:var(--mute)}
 .ev .btn{align-self:flex-start}
 .empty{color:var(--mute);border:1px dashed var(--line);border-radius:22px;padding:28px;text-align:center}
-.cta{border-radius:28px;padding:48px 28px;text-align:center;background:radial-gradient(circle at 30% 0,rgba(123,92,255,.45),transparent 60%),var(--panel);border:1px solid var(--line)}
+.cta{border-radius:28px;padding:48px 28px;text-align:center;background:radial-gradient(circle at 30% 0,rgba(91,49,189,.5),transparent 60%),var(--panel);border:1px solid var(--line)}
 .cta h2{font-size:clamp(26px,3.6vw,44px);margin-bottom:14px}.cta p{color:var(--mute);margin:0 0 26px}
 .stats-bar{display:flex;gap:32px;flex-wrap:wrap;margin:28px 0 0}
 .stats-bar div{display:flex;flex-direction:column;gap:4px}
@@ -145,22 +145,22 @@ details.lesson ul{margin:0;padding:0 20px 18px 40px;color:#dcdce4;display:grid;g
 .chat-input .btn{border:none;cursor:pointer;padding:12px 22px}
 .chat-input #photo-btn{border-radius:999px;padding:10px 14px;cursor:pointer;font-size:17px;flex:none}
 .msg img{max-width:100%;border-radius:12px;display:block}
-.msg.reveal{align-self:center;background:rgba(212,255,58,.12);border:1px solid var(--acc);color:var(--acc);font-weight:700;font-size:14px;border-radius:14px}
+.msg.reveal{align-self:center;background:rgba(167,139,250,.16);border:1px solid var(--acc);color:var(--acc);font-weight:700;font-size:14px;border-radius:14px}
 .empty .btn{margin-top:14px}
 footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding:28px 0 40px}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.feat{grid-template-columns:1fr}.tile.wide{grid-column:auto}}
-@media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{display:none}}
+@media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{padding:8px 14px;font-size:13px}}
 </style>
 </head>
 <body>
 <nav><div class="wrap">
- <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>almau<b>.chat</b></span></a>
+ <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>Pop<b>le</b></span></a>
  <a class="tab" href="#home" data-p="home">О проекте</a>
  <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
  <a class="tab" href="#events" data-p="events">Ивенты</a>
  <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
  <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
- <a class="btn" href="#chat">Открыть чат</a>
+ <a class="btn" href="#chat">Войти / Регистрация</a>
 </div></nav>
 
 <main class="wrap">
@@ -169,11 +169,12 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  <div class="hero">
   <div>
    <h1>Пиши первым. Никто не узнает, кто ты.</h1>
-   <p>Мессенджер университета Almau — анонимный чат прямо на сайте для студентов AlmaU. Регистрируешься один раз, дальше — одна кнопка, и ты в разговоре с новым человеком. Захочешь познакомиться ближе — раскрой личность прямо в чате.</p>
+   <p>Pople — анонимный чат прямо на сайте для студентов AlmaU. Регистрируешься один раз, дальше — одна кнопка, и ты в разговоре с новым человеком. Захочешь познакомиться ближе — раскрой личность прямо в чате.</p>
    <div class="actions">
-    <a class="btn" href="#chat">Начать общение</a>
-    <a class="btn ghost" href="#events">Найти компанию на ивент</a>
+    <a class="btn" href="#chat">Войти / Регистрация</a>
+    <a class="btn ghost" href="#events">Смотреть ивенты</a>
    </div>
+   <p style="color:var(--mute);font-size:14px;margin:14px 0 0">Без регистрации анонимный чат и отметки «Иду» на ивентах недоступны — регистрация нужна один раз.</p>
    <div class="stats-bar" id="stats" aria-live="polite"></div>
   </div>
   <div class="chat" aria-label="Пример анонимного диалога">
@@ -218,7 +219,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <div class="head"><div><h2>Партнёры</h2><p>Клубы, которые работают с нами: афиша мероприятий и отметки «Иду» идут прямо через приложение.</p></div></div>
   <a class="partner-card" href="#summit">
    <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
-   <div><span class="partner-badge">🤝 Партнёр Almau Messenger</span><h3>Summit Seekers</h3>
+   <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Summit Seekers</h3>
    <p>Горный клуб AlmaU: походы выходного дня и лекции о безопасном туризме.</p></div>
    <span class="btn sm">Смотреть походы</span>
   </a>
@@ -235,7 +236,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   </form>
  </section>
 
- <section><div class="cta"><img class="mark" src="img/logo.png" alt="Логотип Almau Messenger"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" href="#chat">Открыть чат</a></div></section>
+ <section><div class="cta"><img class="mark" src="img/logo.png" alt="Логотип Pople"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" href="#chat">Открыть чат</a></div></section>
 </div>
 
 <!-- CLUBS -->
@@ -252,7 +253,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  <div class="club-hero">
   <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
   <div>
-   <span class="partner-badge">🤝 Партнёр Almau Messenger</span>
+   <span class="partner-badge">🤝 Партнёр Pople</span>
    <h1>Summit Seekers</h1>
    <p>Горный клуб AlmaU: безопасный туризм, выносливость, командная работа и бережное отношение к природе. Лекции о туризме и походы в горы.</p>
    <div class="actions">
@@ -292,7 +293,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <div id="lessons"></div>
  </section>
 
- <section><div class="cta"><img class="mark" src="img/clubs/summit.jpg" alt="Логотип Summit Seekers"><h2>Идёте в горы с Summit Seekers?</h2><p>Summit Seekers — партнёр Almau Messenger.</p><a class="btn ghost" href="https://instagram.com/summit.seekers.almau" target="_blank" rel="noopener">Instagram клуба</a></div></section>
+ <section><div class="cta"><img class="mark" src="img/clubs/summit.jpg" alt="Логотип Summit Seekers"><h2>Идёте в горы с Summit Seekers?</h2><p>Summit Seekers — партнёр Pople.</p><a class="btn ghost" href="https://instagram.com/summit.seekers.almau" target="_blank" rel="noopener">Instagram клуба</a></div></section>
 </div>
 
 <!-- EVENTS -->
@@ -378,7 +379,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 </div>
 </main>
 
-<footer><div class="wrap">Мессенджер университета Almau — студенческий проект. Не является официальным ресурсом Almaty Management University.</div></footer>
+<footer><div class="wrap">Pople — студенческий проект для AlmaU. Не является официальным ресурсом Almaty Management University.</div></footer>
 
 <script>
 // Адрес бэкенда (bot/api_server.py) — отдельный сервис, задеплоенный независимо от бота.
@@ -413,7 +414,7 @@ function clubTile(c) {
   return `<article class="tile ${c.wide ? "wide" : ""}"><div class="art" style="background:${G(c.colors)}"></div>${badge(c.logo, c.emoji, c.name)}
     ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
     <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
-    <div class="chips">${c.partner ? `<span>🤝 Партнёр Almau Messenger</span>` : ""}${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div>
+    <div class="chips">${c.partner ? `<span>🤝 Партнёр Pople</span>` : ""}${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div>
     ${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">🏔 Походы и запись</a>` : ""}</article>`;
 }
 

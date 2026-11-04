@@ -93,9 +93,9 @@ async def _send_otp_email(app: web.Application, to_email: str, code: str) -> Non
                        to_email, code)
         return
     payload = {
-        "sender": {"name": app.get("brevo_sender_name") or "Almau Messenger", "email": sender_email},
+        "sender": {"name": app.get("brevo_sender_name") or "Pople", "email": sender_email},
         "to": [{"email": to_email}],
-        "subject": "Код входа в Almau Messenger",
+        "subject": "Код входа в Pople",
         "htmlContent": (f"<p>Твой код для входа: <b>{code}</b></p>"
                         f"<p>Код действует 10 минут. Если это были не вы — просто проигнорируй письмо.</p>"),
     }
@@ -478,7 +478,7 @@ async def chat_stop(request: web.Request) -> web.Response:
 
 
 def register_routes(app: web.Application, brevo_api_key: str = "", brevo_sender_email: str = "",
-                     brevo_sender_name: str = "Almau Messenger") -> None:
+                     brevo_sender_name: str = "Pople") -> None:
     app["web_mm"] = WebMatchmaker()
     app["brevo_api_key"] = brevo_api_key
     app["brevo_sender_email"] = brevo_sender_email

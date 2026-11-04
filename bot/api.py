@@ -174,7 +174,7 @@ async def get_leads(request: web.Request) -> web.Response:
 def build_app(db: Database, content: Content, bot: Bot | None = None,
               admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
               admin_token: str = "", brevo_api_key: str = "", brevo_sender_email: str = "",
-              brevo_sender_name: str = "Almau Messenger") -> web.Application:
+              brevo_sender_name: str = "Pople") -> web.Application:
     # client_max_size поднят под base64-фото в чате (MAX_PHOTO_BYTES в web_chat.py + накладные
     # расходы base64/JSON — дефолтных 1 МБ aiohttp на это не хватит).
     app = web.Application(middlewares=[_cors_middleware(cors_origin)], client_max_size=8 * 1024 * 1024)
