@@ -151,6 +151,17 @@ details.lesson ul{margin:0;padding:0 20px 18px 40px;color:#dcdce4;display:grid;g
 .people-row{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);
  border:1px solid var(--line);border-radius:16px;padding:14px 18px;margin-bottom:8px}
 .people-row small{color:var(--mute);font-size:13px;display:block;margin-top:2px}
+.course-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:10px}
+.course-card h4{margin:0 0 4px;font-size:17px}
+.course-card .meta{color:var(--mute);font-size:13px;margin:0 0 10px}
+.course-card .actions{margin-top:10px}
+.mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.mini-form input,.mini-form select{background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope}
+.mini-form input[type="number"]{width:80px}
+.mini-form input[type="time"]{width:110px}
+.roster-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.roster-row:first-child{border-top:none}
+.grade-pill{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:#dcdce4;margin:2px 4px 2px 0;display:inline-block}
 .chat-input{display:flex;gap:10px;margin-top:14px}
 .chat-input input{flex:1;background:#0b0b0f;border:1px solid var(--line);border-radius:999px;padding:12px 18px;color:var(--text);font:15px Manrope}
 .chat-input input:focus{outline:2px solid var(--acc);outline-offset:1px}
@@ -178,6 +189,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
   <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
   <a class="tab" href="#people" data-p="people">🔎 Люди</a>
+  <a class="tab" href="#academics" data-p="academics">🎓 Учёба</a>
  </div>
 </nav>
 
@@ -423,6 +435,44 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
    <input name="text" id="people-chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000">
    <button class="btn" type="submit">➤</button>
   </form>
+ </section>
+</div>
+
+<!-- УЧЁБА: расписание, оценки, запись на дисциплины — первый модуль учебной части -->
+<div class="page" id="p-academics">
+ <section id="academics-guard" hidden>
+  <div class="empty">Чтобы видеть расписание и оценки, сначала войдите или зарегистрируйтесь.
+   <br><a class="btn sm" href="#chat" style="margin-top:14px;display:inline-block">Войти / Регистрация</a></div>
+ </section>
+
+ <section id="academics-main" hidden>
+  <div class="head"><div><h2>Учёба</h2><p>Твои дисциплины, расписание и оценки.</p></div></div>
+
+  <div class="head" style="margin-top:8px"><div><h3 style="font-size:20px">Моё расписание</h3></div></div>
+  <div id="academics-schedule"></div>
+
+  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Мои оценки</h3></div></div>
+  <div id="academics-grades"></div>
+
+  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Мои дисциплины</h3></div></div>
+  <div id="academics-my-courses"></div>
+
+  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Все дисциплины</h3><p>Запишись, чтобы дисциплина появилась в расписании и оценках.</p></div></div>
+  <div id="academics-all-courses"></div>
+ </section>
+
+ <section id="academics-teaching" hidden>
+  <div class="head" style="margin-top:36px"><div><h3 style="font-size:20px">Преподавание</h3><p>Видно только преподавателям и админам.</p></div></div>
+
+  <form class="lead" id="academics-create-course-form">
+   <input name="code" placeholder="Код дисциплины (напр. CS101)" required maxlength="20">
+   <input name="title" placeholder="Название" required maxlength="200">
+   <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"></textarea>
+   <button class="btn" type="submit">Создать дисциплину</button>
+   <p class="lead-status" id="academics-create-status"></p>
+  </form>
+
+  <div id="academics-teaching-courses"></div>
  </section>
 </div>
 </main>
@@ -1164,17 +1214,201 @@ function enterPeoplePage() {
   loadPeopleDialogs();
 }
 
+// ---------- Учёба: дисциплины, расписание, оценки (первый модуль учебной части) ----------
+const WEEKDAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const SCHEDULE_KINDS = ["лекция", "практика", "лаб", "семинар"];
+
+function fmtSchedule(items) {
+  if (!items.length) return `<div class="empty">Пока ничего нет.</div>`;
+  return items.map(i => `<div class="people-row"><span>${WEEKDAY_NAMES[i.day_of_week]}, ${esc(i.start_time)}–${esc(i.end_time)}
+    ${i.course_code ? ` · ${esc(i.course_code)} ${esc(i.course_title)}` : ""}${i.room ? ` · ауд. ${esc(i.room)}` : ""} · ${esc(i.kind)}</span></div>`).join("");
+}
+
+function fmtGrades(grades) {
+  if (!grades.length) return `<div class="empty">Оценок пока нет.</div>`;
+  const byCourse = new Map();
+  for (const g of grades) {
+    const key = g.course_code || g.course_id;
+    if (!byCourse.has(key)) byCourse.set(key, {title: g.course_title, items: []});
+    byCourse.get(key).items.push(g);
+  }
+  return [...byCourse.entries()].map(([code, {title, items}]) => `
+    <div class="course-card"><h4>${esc(code)} — ${esc(title || "")}</h4>
+    ${items.map(g => `<span class="grade-pill">${esc(g.label)}: ${g.score}/${g.max_score}${g.comment ? " · " + esc(g.comment) : ""}</span>`).join("")}
+    </div>`).join("");
+}
+
+async function loadAcademicsOverview() {
+  try {
+    const [scheduleR, gradesR, myR, allR] = await Promise.all([
+      chatFetch("/api/academics/schedule"), chatFetch("/api/academics/grades"),
+      chatFetch("/api/academics/my-courses"), chatFetch("/api/academics/courses"),
+    ]);
+    const schedule = (await scheduleR.json()).schedule;
+    const grades = (await gradesR.json()).grades;
+    const myCourses = (await myR.json()).courses;
+    const allCourses = (await allR.json()).courses;
+    const myIds = new Set(myCourses.map(c => c.id));
+
+    document.getElementById("academics-schedule").innerHTML = fmtSchedule(schedule);
+    document.getElementById("academics-grades").innerHTML = fmtGrades(grades);
+
+    document.getElementById("academics-my-courses").innerHTML = myCourses.length
+      ? myCourses.map(c => `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
+          ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
+          <div class="actions"><button type="button" class="btn ghost sm" data-unenroll="${c.id}">Отписаться</button></div></div>`).join("")
+      : `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
+
+    document.getElementById("academics-all-courses").innerHTML = allCourses.length
+      ? allCourses.map(c => `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
+          ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
+          <div class="actions">${myIds.has(c.id) ? `<span class="grade-pill">Уже записан(а)</span>`
+            : `<button type="button" class="btn sm" data-enroll="${c.id}">Записаться</button>`}</div></div>`).join("")
+      : `<div class="empty">Дисциплин пока нет.</div>`;
+  } catch {}
+}
+
+function renderTeachingCourse(c, roster, schedule) {
+  const rosterHtml = roster.length
+    ? roster.map(s => `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}</span>
+        <form class="mini-form" data-set-grade="${c.id}" data-student="${s.id}">
+          <input name="label" placeholder="РК1" maxlength="40" required style="width:90px">
+          <input name="score" type="number" step="0.1" placeholder="Балл" required>
+          <input name="max_score" type="number" step="0.1" placeholder="Из" value="100">
+          <button class="btn sm" type="submit">Поставить</button>
+        </form></div>`).join("")
+    : `<div class="empty">Пока никто не записан.</div>`;
+
+  const scheduleHtml = schedule.length
+    ? schedule.map(i => `<div class="people-row"><span>${WEEKDAY_NAMES[i.day_of_week]}, ${esc(i.start_time)}–${esc(i.end_time)}
+        ${i.room ? ` · ауд. ${esc(i.room)}` : ""} · ${esc(i.kind)}</span>
+        <button type="button" class="btn ghost sm" data-delete-schedule="${i.id}">Удалить</button></div>`).join("")
+    : `<div class="empty">Расписания пока нет.</div>`;
+
+  return `<div class="course-card" data-course-id="${c.id}">
+    <h4>${esc(c.code)} — ${esc(c.title)}</h4>
+    ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
+    <p class="meta" style="margin-top:14px;margin-bottom:4px">Расписание</p>
+    ${scheduleHtml}
+    <form class="mini-form" data-add-schedule="${c.id}">
+      <select name="day_of_week">${WEEKDAY_NAMES.map((d, i) => `<option value="${i}">${d}</option>`).join("")}</select>
+      <input name="start_time" type="time" required>
+      <input name="end_time" type="time" required>
+      <input name="room" placeholder="Ауд." maxlength="40" style="width:80px">
+      <select name="kind">${SCHEDULE_KINDS.map(k => `<option>${k}</option>`).join("")}</select>
+      <button class="btn sm" type="submit">+ Пара</button>
+    </form>
+    <p class="meta" style="margin-top:14px;margin-bottom:4px">Студенты (${roster.length})</p>
+    ${rosterHtml}
+  </div>`;
+}
+
+async function loadTeaching() {
+  const section = document.getElementById("academics-teaching");
+  try {
+    const r = await chatFetch("/api/academics/teaching");
+    if (r.status === 403) { section.hidden = true; return; }
+    section.hidden = false;
+    const courses = (await r.json()).courses;
+    const box = document.getElementById("academics-teaching-courses");
+    if (!courses.length) { box.innerHTML = `<div class="empty">Пока нет дисциплин — создай первую выше.</div>`; return; }
+    const parts = await Promise.all(courses.map(async c => {
+      const [rosterR, scheduleR] = await Promise.all([
+        chatFetch(`/api/academics/courses/${c.id}/roster`),
+        chatFetch(`/api/academics/courses/${c.id}/schedule`),
+      ]);
+      return renderTeachingCourse(c, (await rosterR.json()).students, (await scheduleR.json()).schedule);
+    }));
+    box.innerHTML = parts.join("");
+  } catch {}
+}
+
+function initAcademics() {
+  document.getElementById("academics-create-course-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const form = e.target;
+    const status = document.getElementById("academics-create-status");
+    status.textContent = "Создаём…";
+    try {
+      const r = await chatFetch("/api/academics/courses", {method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))});
+      if (!r.ok) { status.textContent = "Не получилось создать дисциплину."; return; }
+      status.textContent = "";
+      form.reset();
+      loadTeaching();
+      loadAcademicsOverview();
+    } catch { status.textContent = "Бэкенд недоступен."; }
+  });
+
+  document.addEventListener("click", e => {
+    const enrollBtn = e.target.closest("[data-enroll]");
+    if (enrollBtn) {
+      chatFetch("/api/academics/enroll", {method: "POST", body: JSON.stringify({course_id: Number(enrollBtn.dataset.enroll)})})
+        .then(loadAcademicsOverview).catch(() => {});
+      return;
+    }
+    const unenrollBtn = e.target.closest("[data-unenroll]");
+    if (unenrollBtn) {
+      chatFetch("/api/academics/unenroll", {method: "POST", body: JSON.stringify({course_id: Number(unenrollBtn.dataset.unenroll)})})
+        .then(loadAcademicsOverview).catch(() => {});
+      return;
+    }
+    const delBtn = e.target.closest("[data-delete-schedule]");
+    if (delBtn) {
+      chatFetch("/api/academics/schedule/delete", {method: "POST", body: JSON.stringify({item_id: Number(delBtn.dataset.deleteSchedule)})})
+        .then(loadTeaching).catch(() => {});
+    }
+  });
+
+  document.addEventListener("submit", e => {
+    const addForm = e.target.closest("[data-add-schedule]");
+    if (addForm) {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(addForm).entries());
+      data.course_id = Number(addForm.dataset.addSchedule);
+      data.day_of_week = Number(data.day_of_week);
+      chatFetch("/api/academics/schedule", {method: "POST", body: JSON.stringify(data)}).then(loadTeaching).catch(() => {});
+      return;
+    }
+    const gradeForm = e.target.closest("[data-set-grade]");
+    if (gradeForm) {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(gradeForm).entries());
+      data.course_id = Number(gradeForm.dataset.setGrade);
+      data.user_id = Number(gradeForm.dataset.student);
+      data.score = Number(data.score);
+      data.max_score = Number(data.max_score || 100);
+      chatFetch("/api/academics/grades/set", {method: "POST", body: JSON.stringify(data)})
+        .then(() => { gradeForm.reset(); loadAcademicsOverview(); }).catch(() => {});
+    }
+  });
+}
+
+function enterAcademicsPage() {
+  if (!chatToken) {
+    document.getElementById("academics-guard").hidden = false;
+    document.getElementById("academics-main").hidden = true;
+    document.getElementById("academics-teaching").hidden = true;
+    return;
+  }
+  document.getElementById("academics-guard").hidden = true;
+  document.getElementById("academics-main").hidden = false;
+  loadAcademicsOverview();
+  loadTeaching();
+}
+
 function route() {
   const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events", "summit", "chat", "people"].includes(p) ? p : "home";
+  const id = ["home", "clubs", "events", "summit", "chat", "people", "academics"].includes(p) ? p : "home";
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
   window.scrollTo(0, 0);
   if (id === "summit") loadSummit();
   if (id === "people") enterPeoplePage();
+  if (id === "academics") enterAcademicsPage();
 }
 initChat();
 initPeople();
+initAcademics();
 addEventListener("hashchange", route);
 route();
 load();

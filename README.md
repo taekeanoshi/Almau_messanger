@@ -139,11 +139,25 @@ python -m bot.main
 | GET | `/api/chat/photo/{photo_id}` | отдаёт байты фото — только участникам диалога, иначе 403 |
 | POST | `/api/chat/reveal` | `{"dialog_id"}` — раскрыть собеседнику своё настоящее имя системным сообщением в чате |
 | POST | `/api/chat/next` / `/api/chat/stop` | закончить диалог и (не)встать в поиск заново |
-| GET | `/api/chat/direct/search-users?q=<имя>` | прямой (не анонимный) чат — поиск зарегистрированных по имени/фамилии, от 2 символов |
+| GET | `/api/chat/direct/search-users?q=<имя>` | прямой (не анонимный) чат — поиск зарегистрированных по имени/фамилии; пустой `q` отдаёт весь список как справочник |
 | POST | `/api/chat/direct/start` | `{"user_id"}` — создать (или вернуть уже существующий) прямой диалог с конкретным человеком |
 | GET | `/api/chat/direct/list` | список прямых диалогов текущего пользователя с данными собеседников |
 | GET | `/api/chat/direct/poll?dialog_id=<id>&since=<id>` | новые сообщения в прямом диалоге — только для его участников |
 | POST | `/api/chat/direct/send` | `{"dialog_id", "text"}` — отправить сообщение в прямом диалоге |
+| POST | `/api/admin/set-role?token=<ADMIN_TOKEN>` | `{"email", "role"}` (`student`\|`teacher`\|`admin`) — выдаёт роль аккаунту по почте, без этого UI для управления ролями нет |
+| GET | `/api/academics/courses` | список всех дисциплин |
+| GET | `/api/academics/my-courses` | дисциплины, на которые записан текущий пользователь |
+| POST | `/api/academics/enroll` / `/api/academics/unenroll` | `{"course_id"}` — записаться/отписаться от дисциплины |
+| GET | `/api/academics/schedule` | личное расписание — только по дисциплинам, на которые записан |
+| GET | `/api/academics/grades` | личные оценки по всем дисциплинам |
+| GET | `/api/academics/teaching` | дисциплины, которые ведёт текущий (`teacher`/`admin`) аккаунт — 403 студентам |
+| POST | `/api/academics/courses` | `{"code", "title", "description"}` — создать дисциплину (только `teacher`/`admin`) |
+| GET | `/api/academics/courses/{id}/roster` | список записанных студентов — только преподаватель этой дисциплины или админ |
+| GET | `/api/academics/courses/{id}/schedule` | расписание дисциплины — для её преподавателя/админа |
+| POST | `/api/academics/schedule` | `{"course_id", "day_of_week" (0=Пн), "start_time", "end_time", опц. "room", "kind"}` — добавить пару в расписание |
+| POST | `/api/academics/schedule/delete` | `{"item_id"}` — удалить пару из расписания |
+| POST | `/api/academics/grades/set` | `{"course_id", "user_id", "label", "score", опц. "max_score", "comment"}` — выставить/обновить оценку (студент должен быть записан) |
+| GET | `/api/academics/courses/{id}/grades` | полная ведомость по дисциплине — для её преподавателя/админа |
 
 Проверить локально после `python -m bot.api_server`:
 

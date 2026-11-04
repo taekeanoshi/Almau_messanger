@@ -11,10 +11,13 @@ import logging
 from aiogram import Bot
 from aiohttp import web
 
+from bot.academics import register_routes as register_academics_routes
 from bot.content import Content
 from bot.db import Database
 from bot.web_chat import read_json_body, require_session
 from bot.web_chat import register_routes as register_web_chat_routes
+
+VALID_ROLES = {"student", "teacher", "admin"}
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +187,23 @@ async def admin_reset_web_chat(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "deleted": counts})
 
 
+async def admin_set_role(request: web.Request) -> web.Response:
+    """Назначает роль аккаунту по почте — так преподаватель/админ учёбы появляется на платформе,
+    без отдельного UI для этого. POST /api/admin/set-role?token=<ADMIN_TOKEN>, body {email, role}."""
+    admin_token = request.app.get("admin_token")
+    if not admin_token or request.query.get("token") != admin_token:
+        raise web.HTTPUnauthorized(reason="invalid or missing token")
+    data = await read_json_body(request)
+    email = str(data.get("email", "")).strip().lower()
+    role = str(data.get("role", "")).strip().lower()
+    if role not in VALID_ROLES:
+        raise web.HTTPBadRequest(reason=f"role must be one of {sorted(VALID_ROLES)}")
+    db: Database = request.app["db"]
+    if not db.set_web_user_role(email, role):
+        raise web.HTTPNotFound(reason="no account with this email")
+    return web.json_response({"ok": True, "email": email, "role": role})
+
+
 def build_app(db: Database, content: Content, bot: Bot | None = None,
               admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
               admin_token: str = "", brevo_api_key: str = "", brevo_sender_email: str = "",
@@ -207,6 +227,8 @@ def build_app(db: Database, content: Content, bot: Bot | None = None,
     app.router.add_post("/api/leads", post_lead)
     app.router.add_get("/api/leads", get_leads)
     app.router.add_post("/api/admin/reset-web-chat", admin_reset_web_chat)
+    app.router.add_post("/api/admin/set-role", admin_set_role)
+    register_academics_routes(app)
     register_web_chat_routes(app, brevo_api_key=brevo_api_key, brevo_sender_email=brevo_sender_email,
                              brevo_sender_name=brevo_sender_name)
     return app

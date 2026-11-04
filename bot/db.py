@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS web_users (
     course        TEXT NOT NULL DEFAULT '',
     specialty     TEXT NOT NULL DEFAULT '',
     nickname      TEXT NOT NULL DEFAULT '',  -- анонимный ник, виден собеседнику вместо имени
+    role          TEXT NOT NULL DEFAULT 'student',  -- 'student' | 'teacher' | 'admin'
     banned        INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
 );
@@ -93,6 +94,40 @@ CREATE TABLE IF NOT EXISTS web_photos (
     content_type  TEXT NOT NULL,
     data          BLOB NOT NULL,
     created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS courses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT NOT NULL,            -- короткий код дисциплины, напр. "CS101"
+    title       TEXT NOT NULL,
+    teacher_id  INTEGER,                  -- web_users.id преподавателя, может быть не назначен
+    description TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS enrollments (
+    user_id     INTEGER NOT NULL,
+    course_id   INTEGER NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id)
+);
+CREATE TABLE IF NOT EXISTS schedule_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id   INTEGER NOT NULL,
+    day_of_week INTEGER NOT NULL,         -- 0=понедельник … 6=воскресенье
+    start_time  TEXT NOT NULL,            -- "HH:MM"
+    end_time    TEXT NOT NULL,            -- "HH:MM"
+    room        TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT 'лекция',  -- 'лекция' | 'практика' | 'лаб' | ...
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS grades (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    course_id   INTEGER NOT NULL,
+    label       TEXT NOT NULL,            -- "РК1" | "РК2" | "Экзамен" | "Итог" | ...
+    score       REAL NOT NULL,
+    max_score   REAL NOT NULL DEFAULT 100,
+    comment     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
 );
 """
 
@@ -133,6 +168,7 @@ class Database:
                 "course": "ALTER TABLE web_users ADD COLUMN course TEXT NOT NULL DEFAULT ''",
                 "specialty": "ALTER TABLE web_users ADD COLUMN specialty TEXT NOT NULL DEFAULT ''",
                 "nickname": "ALTER TABLE web_users ADD COLUMN nickname TEXT NOT NULL DEFAULT ''",
+                "role": "ALTER TABLE web_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'",
             },
             "web_messages": {
                 "kind": "ALTER TABLE web_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
@@ -416,6 +452,134 @@ class Database:
 
     def get_web_photo(self, photo_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM web_photos WHERE id = ?", (photo_id,)).fetchone()
+
+    # ---------- учёба: дисциплины, расписание, оценки ----------
+
+    def set_web_user_role(self, email: str, role: str) -> bool:
+        with self.conn:
+            cur = self.conn.execute("UPDATE web_users SET role = ? WHERE email = ?", (role, email))
+        return cur.rowcount > 0
+
+    def create_course(self, code: str, title: str, description: str = "", teacher_id: int | None = None) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO courses (code, title, teacher_id, description, created_at) VALUES (?, ?, ?, ?, ?)",
+                (code, title, teacher_id, description, _now()),
+            )
+        return cur.lastrowid
+
+    def list_courses(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM courses ORDER BY code").fetchall()
+
+    def get_course(self, course_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)).fetchone()
+
+    def courses_taught_by(self, teacher_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM courses WHERE teacher_id = ? ORDER BY code", (teacher_id,)).fetchall()
+
+    def enroll(self, user_id: int, course_id: int) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO enrollments (user_id, course_id, created_at) VALUES (?, ?, ?)",
+                (user_id, course_id, _now()),
+            )
+
+    def unenroll(self, user_id: int, course_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM enrollments WHERE user_id = ? AND course_id = ?", (user_id, course_id))
+
+    def is_enrolled(self, user_id: int, course_id: int) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM enrollments WHERE user_id = ? AND course_id = ?", (user_id, course_id)
+        ).fetchone()
+        return row is not None
+
+    def courses_for_student(self, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT c.* FROM courses c JOIN enrollments e ON e.course_id = c.id
+               WHERE e.user_id = ? ORDER BY c.code""",
+            (user_id,),
+        ).fetchall()
+
+    def roster(self, course_id: int) -> list[sqlite3.Row]:
+        """Студенты, записанные на дисциплину — для преподавателя/админа."""
+        return self.conn.execute(
+            """SELECT u.* FROM web_users u JOIN enrollments e ON e.user_id = u.id
+               WHERE e.course_id = ? ORDER BY u.first_name, u.last_name""",
+            (course_id,),
+        ).fetchall()
+
+    def add_schedule_item(self, course_id: int, day_of_week: int, start_time: str, end_time: str,
+                           room: str = "", kind: str = "лекция") -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO schedule_items (course_id, day_of_week, start_time, end_time, room, kind, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (course_id, day_of_week, start_time, end_time, room, kind, _now()),
+            )
+        return cur.lastrowid
+
+    def delete_schedule_item(self, item_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM schedule_items WHERE id = ?", (item_id,))
+
+    def get_schedule_item(self, item_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM schedule_items WHERE id = ?", (item_id,)).fetchone()
+
+    def schedule_for_course(self, course_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM schedule_items WHERE course_id = ? ORDER BY day_of_week, start_time", (course_id,)
+        ).fetchall()
+
+    def schedule_for_student(self, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT s.*, c.code AS course_code, c.title AS course_title FROM schedule_items s
+               JOIN courses c ON c.id = s.course_id
+               JOIN enrollments e ON e.course_id = c.id
+               WHERE e.user_id = ? ORDER BY s.day_of_week, s.start_time""",
+            (user_id,),
+        ).fetchall()
+
+    def set_grade(self, user_id: int, course_id: int, label: str, score: float,
+                  max_score: float = 100, comment: str = "") -> int:
+        """Выставляет оценку. Повторная проставление той же метки (напр. «РК1») тому же
+        студенту по той же дисциплине обновляет существующую запись, а не плодит дубликаты."""
+        with self.conn:
+            existing = self.conn.execute(
+                "SELECT id FROM grades WHERE user_id = ? AND course_id = ? AND label = ?",
+                (user_id, course_id, label),
+            ).fetchone()
+            if existing:
+                self.conn.execute(
+                    "UPDATE grades SET score = ?, max_score = ?, comment = ? WHERE id = ?",
+                    (score, max_score, comment, existing["id"]),
+                )
+                return existing["id"]
+            cur = self.conn.execute(
+                """INSERT INTO grades (user_id, course_id, label, score, max_score, comment, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, course_id, label, score, max_score, comment, _now()),
+            )
+            return cur.lastrowid
+
+    def grades_for_student(self, user_id: int, course_id: int | None = None) -> list[sqlite3.Row]:
+        if course_id is None:
+            return self.conn.execute(
+                """SELECT g.*, c.code AS course_code, c.title AS course_title FROM grades g
+                   JOIN courses c ON c.id = g.course_id
+                   WHERE g.user_id = ? ORDER BY c.code, g.created_at""",
+                (user_id,),
+            ).fetchall()
+        return self.conn.execute(
+            "SELECT * FROM grades WHERE user_id = ? AND course_id = ? ORDER BY created_at",
+            (user_id, course_id),
+        ).fetchall()
+
+    def grades_for_course(self, course_id: int) -> list[sqlite3.Row]:
+        """Все оценки по дисциплине (все студенты) — для ведомости преподавателя."""
+        return self.conn.execute(
+            "SELECT * FROM grades WHERE course_id = ? ORDER BY user_id, created_at", (course_id,)
+        ).fetchall()
 
     # ---------- обслуживание ----------
 
