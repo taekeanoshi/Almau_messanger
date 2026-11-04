@@ -166,6 +166,37 @@ def test_get_leads_disabled_without_admin_token_configured():
     run(go())
 
 
+def test_admin_reset_web_chat_requires_token_and_confirmation():
+    async def go():
+        client, db, content = make_client(admin_token="secret")
+        async with client:
+            await client.post("/api/chat/register", json={
+                "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
+                "email": "ayan@example.com", "password": "secret1", "gender": "male",
+                "course": "2", "specialty": "Computer Science",
+            })
+            assert db.stats()["web_users"] == 1
+
+            # Без токена — 401, данные целы
+            resp = await client.post("/api/admin/reset-web-chat")
+            assert resp.status == 401
+            assert db.stats()["web_users"] == 1
+
+            # С токеном, но без явного confirm=yes — тоже отказ, данные целы
+            resp = await client.post("/api/admin/reset-web-chat", params={"token": "secret"})
+            assert resp.status == 400
+            assert db.stats()["web_users"] == 1
+
+            # Токен + confirm=yes — стирает все web_* таблицы и возвращает, сколько удалено
+            resp = await client.post("/api/admin/reset-web-chat", params={"token": "secret", "confirm": "yes"})
+            assert resp.status == 200
+            body = await resp.json()
+            assert body["deleted"]["web_users"] == 1
+            assert db.stats()["web_users"] == 0
+
+    run(go())
+
+
 def test_hikes_api_shows_free_spots_and_never_leaks_personal_data():
     async def go():
         client, db, content = make_client()

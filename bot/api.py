@@ -171,6 +171,19 @@ async def get_leads(request: web.Request) -> web.Response:
     return web.json_response([dict(row) for row in db.recent_leads(50)])
 
 
+async def admin_reset_web_chat(request: web.Request) -> web.Response:
+    """Необратимо стирает ВСЕ аккаунты, диалоги, сообщения и фото «Анонимного чата» —
+    для очистки тестовых данных перед демо. POST /api/admin/reset-web-chat?token=<ADMIN_TOKEN>&confirm=yes."""
+    admin_token = request.app.get("admin_token")
+    if not admin_token or request.query.get("token") != admin_token:
+        raise web.HTTPUnauthorized(reason="invalid or missing token")
+    if request.query.get("confirm") != "yes":
+        raise web.HTTPBadRequest(reason="pass confirm=yes to actually delete everything")
+    db: Database = request.app["db"]
+    counts = db.reset_web_chat_data()
+    return web.json_response({"ok": True, "deleted": counts})
+
+
 def build_app(db: Database, content: Content, bot: Bot | None = None,
               admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
               admin_token: str = "", brevo_api_key: str = "", brevo_sender_email: str = "",
@@ -193,6 +206,7 @@ def build_app(db: Database, content: Content, bot: Bot | None = None,
     app.router.add_get("/api/stats", get_stats)
     app.router.add_post("/api/leads", post_lead)
     app.router.add_get("/api/leads", get_leads)
+    app.router.add_post("/api/admin/reset-web-chat", admin_reset_web_chat)
     register_web_chat_routes(app, brevo_api_key=brevo_api_key, brevo_sender_email=brevo_sender_email,
                              brevo_sender_name=brevo_sender_name)
     return app

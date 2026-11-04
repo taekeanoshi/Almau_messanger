@@ -125,6 +125,7 @@ python -m bot.main
 | GET | `/api/stats` | публичная статистика: пользователи, диалоги, заявки, аккаунты и диалоги чата |
 | POST | `/api/leads` | сохраняет заявку с формы сайта (`name`, `contact`, `message`, опц. `event_id`) в БД |
 | GET | `/api/leads?token=<ADMIN_TOKEN>` | просмотр последних заявок без бота (401 без правильного токена) |
+| POST | `/api/admin/reset-web-chat?token=<ADMIN_TOKEN>&confirm=yes` | **необратимо** стирает все аккаунты/диалоги/сообщения/фото «Анонимного чата» — для очистки тестовых данных перед демо |
 | POST | `/api/chat/register` | аккаунт в «Анонимном чате»: `first_name`, `last_name`, `phone`, `email`, `password`, `gender`, `course`, `specialty`, опц. `nickname` — сразу шлёт код подтверждения на почту |
 | POST | `/api/chat/login` | `{"email", "password"}` — вход по паролю (нужна подтверждённая почта), выдаёт токен сессии |
 | POST | `/api/chat/otp/request` | `{"email"}` — повторно шлёт 6-значный код на почту, действует 10 минут |

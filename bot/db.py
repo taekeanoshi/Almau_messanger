@@ -404,3 +404,17 @@ class Database:
 
     def get_web_photo(self, photo_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM web_photos WHERE id = ?", (photo_id,)).fetchone()
+
+    # ---------- обслуживание ----------
+
+    WEB_CHAT_TABLES = ("web_sessions", "web_otp_codes", "web_photos", "web_messages", "web_dialogs", "web_users")
+
+    def reset_web_chat_data(self) -> dict[str, int]:
+        """Полностью стирает аккаунты, диалоги, сообщения, фото и коды из «Анонимного чата» —
+        необратимо. Для очистки тестовых данных перед показом, через админ-эндпоинт с ADMIN_TOKEN."""
+        counts: dict[str, int] = {}
+        with self.conn:
+            for table in self.WEB_CHAT_TABLES:
+                counts[table] = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                self.conn.execute(f"DELETE FROM {table}")
+        return counts
