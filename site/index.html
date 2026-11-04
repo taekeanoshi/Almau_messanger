@@ -24,7 +24,13 @@ a{color:inherit}
 h1,h2,h3{font-family:Unbounded,Manrope,sans-serif;line-height:1.1;margin:0}
 .wrap{max-width:1240px;margin:0 auto;padding:0 20px}
 nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:rgba(5,5,7,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-nav .wrap{display:flex;align-items:center;gap:8px;height:64px;overflow-x:auto}
+nav .wrap{display:flex;align-items:center;gap:8px;height:64px}
+.nav-drawer{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));right:20px;max-width:calc(100vw - 40px);min-width:220px;
+ background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:8px;display:flex;flex-direction:column;gap:2px;
+ box-shadow:0 20px 50px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .18s,transform .18s}
+.nav-drawer.open{opacity:1;visibility:visible;transform:translateY(0)}
+.nav-drawer .tab{padding:12px 14px;border-radius:12px;white-space:nowrap}
+.nav-drawer .tab.on{background:#1c1826;color:var(--text)}
 .logo{display:flex;align-items:center;gap:10px;font-family:Unbounded;font-weight:800;font-size:15px;margin-right:auto;white-space:nowrap;text-decoration:none}
 .logo img{width:36px;height:36px;border-radius:50%;flex:none}
 .logo b{color:var(--acc)}
@@ -153,15 +159,20 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 </style>
 </head>
 <body>
-<nav><div class="wrap">
- <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>Pop<b>le</b></span></a>
- <a class="tab" href="#home" data-p="home">О проекте</a>
- <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
- <a class="tab" href="#events" data-p="events">Ивенты</a>
- <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
- <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
- <a class="btn" href="#chat">Войти / Регистрация</a>
-</div></nav>
+<nav>
+ <div class="wrap">
+  <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>Pop<b>le</b></span></a>
+  <button type="button" class="btn ghost" id="nav-menu-btn" aria-expanded="false" aria-controls="nav-drawer" hidden>☰ Меню</button>
+  <a class="btn" id="nav-auth-btn" href="#chat">Войти / Регистрация</a>
+ </div>
+ <div class="nav-drawer" id="nav-drawer">
+  <a class="tab" href="#home" data-p="home">О проекте</a>
+  <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
+  <a class="tab" href="#events" data-p="events">Ивенты</a>
+  <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
+  <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
+ </div>
+</nav>
 
 <main class="wrap">
 <!-- HOME -->
@@ -631,19 +642,39 @@ async function loadSummit() {
 // ---------- Анонимный чат на сайте (свои аккаунты, без Telegram) ----------
 let chatToken = null, chatUser = null, chatDialogId = null, chatSince = 0, pollTimer = null;
 
+function closeNavDrawer() {
+  document.getElementById("nav-drawer").classList.remove("open");
+  document.getElementById("nav-menu-btn").setAttribute("aria-expanded", "false");
+}
+function toggleNavDrawer() {
+  const open = document.getElementById("nav-drawer").classList.toggle("open");
+  document.getElementById("nav-menu-btn").setAttribute("aria-expanded", open ? "true" : "false");
+}
+// Вкладки (клубы, ивенты, чат и всё, что добавим позже) видны только после входа —
+// до этого в навбаре только одна кнопка «Войти / Регистрация», сразу заметная.
+function updateNavAuthUI() {
+  const authed = !!chatToken;
+  document.getElementById("nav-auth-btn").hidden = authed;
+  document.getElementById("nav-menu-btn").hidden = !authed;
+  if (!authed) closeNavDrawer();
+}
+
 function saveChatSession(token, user) {
   chatToken = token; chatUser = user;
   try { localStorage.setItem("chat_token", token); localStorage.setItem("chat_user", JSON.stringify(user)); } catch {}
+  updateNavAuthUI();
 }
 function clearChatSession() {
   chatToken = null; chatUser = null;
   try { localStorage.removeItem("chat_token"); localStorage.removeItem("chat_user"); } catch {}
+  updateNavAuthUI();
 }
 function loadChatSession() {
   try {
     const t = localStorage.getItem("chat_token"), u = localStorage.getItem("chat_user");
     if (t && u) { chatToken = t; chatUser = JSON.parse(u); }
   } catch {}
+  updateNavAuthUI();
 }
 
 function chatSection(id) {
@@ -867,7 +898,25 @@ async function sendPhoto(file) {
   }
 }
 
+function initNavDrawer() {
+  document.getElementById("nav-menu-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    toggleNavDrawer();
+  });
+  document.getElementById("nav-drawer").addEventListener("click", e => {
+    if (e.target.closest(".tab")) closeNavDrawer();
+  });
+  document.addEventListener("click", e => {
+    if (e.target.closest("#nav-drawer") || e.target.closest("#nav-menu-btn")) return;
+    closeNavDrawer();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeNavDrawer();
+  });
+}
+
 function initChat() {
+  initNavDrawer();
   loadChatSession();
   initAuthTabs();
   handleLoginForm(document.getElementById("login-form"), "login-status");
