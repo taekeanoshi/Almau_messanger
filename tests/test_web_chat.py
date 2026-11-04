@@ -442,15 +442,21 @@ def test_search_users_by_name(monkeypatch):
                                        "c@example.com", "secret1", "female")
             t1 = u1["token"]
 
-            # Короткий запрос (1 символ) не ищет — слишком широкий скан
-            resp = await client.get("/api/chat/direct/search-users", headers=auth(t1), params={"q": "а"})
-            assert (await resp.json())["users"] == []
+            # Пустой запрос — весь список зарегистрированных (справочник), без самого себя
+            resp = await client.get("/api/chat/direct/search-users", headers=auth(t1))
+            found = (await resp.json())["users"]
+            assert len(found) == 2
+            assert all(u["id"] != 1 for u in found)  # себя в выдаче нет
 
-            # По имени находит нужного человека, но не самого себя
+            # По имени находит нужного человека
             resp = await client.get("/api/chat/direct/search-users", headers=auth(t1), params={"q": "Нұрлан"})
             found = (await resp.json())["users"]
             assert len(found) == 1 and found[0]["first_name"] == "Әсел"
-            assert all(u["id"] != 1 for u in found)  # себя в выдаче нет
+
+            # Регистр и кириллица (включая казахские буквы) не мешают поиску
+            resp = await client.get("/api/chat/direct/search-users", headers=auth(t1), params={"q": "қасымов"})
+            found = (await resp.json())["users"]
+            assert len(found) == 1 and found[0]["first_name"] == "Берік"
 
             # Без токена — 401
             resp = await client.get("/api/chat/direct/search-users", params={"q": "Касым"})

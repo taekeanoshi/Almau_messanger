@@ -365,16 +365,28 @@ class Database:
             (user_id, user_id),
         ).fetchall()
 
-    def search_web_users(self, query: str, exclude_id: int, limit: int = 20) -> list[sqlite3.Row]:
-        """Поиск по ФИО для прямого чата — не анонимного: возвращает только незабаненных."""
-        like = f"%{query}%"
-        return self.conn.execute(
-            """SELECT * FROM web_users
-               WHERE banned = 0 AND id != ?
-                 AND (first_name LIKE ? OR last_name LIKE ? OR (first_name || ' ' || last_name) LIKE ?)
-               ORDER BY first_name, last_name LIMIT ?""",
-            (exclude_id, like, like, like, limit),
+    def search_web_users(self, query: str, exclude_id: int, limit: int = 100) -> list[sqlite3.Row]:
+        """Поиск по ФИО для прямого чата — не анонимного: возвращает только незабаненных,
+        без самого себя. Пустой запрос — весь список зарегистрированных (как справочник).
+
+        Фильтруем в Python, а не через SQL LIKE: SQLite по умолчанию регистронезависимо
+        сравнивает только ASCII-латиницу, а казахская/русская кириллица (включая Ә, Қ, Ң,
+        Ғ, Ү, Ұ, Һ, І) с LIKE просто не матчилась бы при разном регистре."""
+        rows = self.conn.execute(
+            "SELECT * FROM web_users WHERE banned = 0 AND id != ? ORDER BY first_name, last_name",
+            (exclude_id,),
         ).fetchall()
+        q = query.strip().casefold()
+        if not q:
+            return rows[:limit]
+        out = []
+        for row in rows:
+            full_name = f"{row['first_name']} {row['last_name']}".casefold()
+            if q in full_name:
+                out.append(row)
+                if len(out) >= limit:
+                    break
+        return out
 
     def add_web_message(self, dialog_id: str, sender_id: int, text: str,
                          kind: str = "text", photo_id: int | None = None) -> int:

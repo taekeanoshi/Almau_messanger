@@ -482,8 +482,7 @@ async def chat_stop(request: web.Request) -> web.Response:
 # обычный поиск по имени/фамилии среди зарегистрированных и постоянный (не одноразовый,
 # как в подборе по полу) диалог с конкретным человеком, по одному диалогу на пару.
 
-MIN_SEARCH_LEN = 2
-SEARCH_LIMIT = 20
+SEARCH_LIMIT = 100
 
 
 def _public_user(row) -> dict:
@@ -494,11 +493,9 @@ def _public_user(row) -> dict:
 
 
 async def search_users(request: web.Request) -> web.Response:
+    """Пустой q — весь список зарегистрированных (как справочник), непустой — фильтр по ФИО."""
     user_id = require_session(request)
     query = request.query.get("q", "").strip()[:MAX_NAME_LEN]
-    if len(query) < MIN_SEARCH_LEN:
-        return web.json_response({"users": []})
-
     db: Database = request.app["db"]
     rows = db.search_web_users(query, exclude_id=user_id, limit=SEARCH_LIMIT)
     return web.json_response({"users": [_public_user(r) for r in rows]})

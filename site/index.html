@@ -189,10 +189,11 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
    <h1>Пиши первым. Никто не узнает, кто ты.</h1>
    <p>Pople — анонимный чат прямо на сайте для студентов AlmaU. Регистрируешься один раз, дальше — одна кнопка, и ты в разговоре с новым человеком. Захочешь познакомиться ближе — раскрой личность прямо в чате.</p>
    <div class="actions">
-    <a class="btn" href="#chat">Войти / Регистрация</a>
+    <a class="btn" href="#chat" id="hero-auth-btn">Войти / Регистрация</a>
+    <a class="btn" href="#chat" id="hero-authed-btn" hidden>💬 Открыть анонимный чат</a>
     <a class="btn ghost" href="#events">Смотреть ивенты</a>
    </div>
-   <p style="color:var(--mute);font-size:14px;margin:14px 0 0">Без регистрации анонимный чат и отметки «Иду» на ивентах недоступны — регистрация нужна один раз.</p>
+   <p style="color:var(--mute);font-size:14px;margin:14px 0 0" id="hero-auth-note">Без регистрации анонимный чат и отметки «Иду» на ивентах недоступны — регистрация нужна один раз.</p>
    <div class="stats-bar" id="stats" aria-live="polite"></div>
   </div>
   <div class="chat" aria-label="Пример анонимного диалога">
@@ -404,7 +405,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </section>
 
  <section id="people-list">
-  <div class="head"><div><h2>Люди</h2><p>Найди однокурсника по имени и фамилии — это обычный чат, не анонимный: тебя видно по имени.</p></div></div>
+  <div class="head"><div><h2>Люди</h2><p>Все, кто зарегистрирован на платформе — ищи по имени и фамилии или листай список. Это обычный чат, не анонимный: тебя видно по имени.</p></div></div>
   <input type="text" id="people-search-input" class="people-search" placeholder="Имя и фамилия…" autocomplete="off" maxlength="80">
   <div id="people-results"></div>
   <div class="head" style="margin-top:32px"><div><h2 style="font-size:22px">Мои диалоги</h2></div></div>
@@ -688,11 +689,20 @@ function toggleNavDrawer() {
 }
 // Вкладки (клубы, ивенты, чат и всё, что добавим позже) видны только после входа —
 // до этого в навбаре только одна кнопка «Войти / Регистрация», сразу заметная.
+// То же самое для копии этой кнопки в hero на главной — иначе после входа и редиректа
+// на главную там всё ещё видна «Войти / Регистрация», будто вход не сработал.
 function updateNavAuthUI() {
   const authed = !!chatToken;
   document.getElementById("nav-auth-btn").hidden = authed;
   document.getElementById("nav-menu-btn").hidden = !authed;
   if (!authed) closeNavDrawer();
+
+  const heroAuthBtn = document.getElementById("hero-auth-btn");
+  const heroAuthedBtn = document.getElementById("hero-authed-btn");
+  const heroAuthNote = document.getElementById("hero-auth-note");
+  if (heroAuthBtn) heroAuthBtn.hidden = authed;
+  if (heroAuthedBtn) heroAuthedBtn.hidden = !authed;
+  if (heroAuthNote) heroAuthNote.hidden = authed;
 }
 
 function saveChatSession(token, user) {
@@ -1056,17 +1066,19 @@ async function loadPeopleDialogs() {
   } catch {}
 }
 
+// Пустой запрос — весь список зарегистрированных (справочник), иначе — фильтр по ФИО.
+async function loadPeopleResults(q) {
+  try {
+    const r = await chatFetch(`/api/chat/direct/search-users?q=${encodeURIComponent(q)}`);
+    renderPeopleResults((await r.json()).users);
+  } catch {}
+}
+
 function initPeopleSearch() {
   document.getElementById("people-search-input").addEventListener("input", e => {
     clearTimeout(peopleSearchTimer);
     const q = e.target.value.trim();
-    if (q.length < 2) { renderPeopleResults([]); return; }
-    peopleSearchTimer = setTimeout(async () => {
-      try {
-        const r = await chatFetch(`/api/chat/direct/search-users?q=${encodeURIComponent(q)}`);
-        renderPeopleResults((await r.json()).users);
-      } catch {}
-    }, 300);
+    peopleSearchTimer = setTimeout(() => loadPeopleResults(q), 300);
   });
 }
 
@@ -1148,7 +1160,7 @@ function enterPeoplePage() {
   document.getElementById("people-guard").hidden = true;
   document.getElementById("people-list").hidden = false;
   document.getElementById("people-search-input").value = "";
-  renderPeopleResults([]);
+  loadPeopleResults("");
   loadPeopleDialogs();
 }
 
