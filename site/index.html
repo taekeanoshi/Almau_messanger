@@ -145,6 +145,12 @@ details.lesson ul{margin:0;padding:0 20px 18px 40px;color:#dcdce4;display:grid;g
 .gender-pick label{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;font-size:14px}
 .gender-pick input{accent-color:var(--acc)}
 #chat-box{max-height:60vh;overflow-y:auto}
+.people-search{width:100%;max-width:480px;display:block;margin:0 auto 18px;background:#0b0b0f;border:1px solid var(--line);
+ border-radius:999px;padding:12px 18px;color:var(--text);font:15px Manrope}
+.people-search:focus{outline:2px solid var(--acc);outline-offset:1px}
+.people-row{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);
+ border:1px solid var(--line);border-radius:16px;padding:14px 18px;margin-bottom:8px}
+.people-row small{color:var(--mute);font-size:13px;display:block;margin-top:2px}
 .chat-input{display:flex;gap:10px;margin-top:14px}
 .chat-input input{flex:1;background:#0b0b0f;border:1px solid var(--line);border-radius:999px;padding:12px 18px;color:var(--text);font:15px Manrope}
 .chat-input input:focus{outline:2px solid var(--acc);outline-offset:1px}
@@ -171,6 +177,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <a class="tab" href="#events" data-p="events">Ивенты</a>
   <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
   <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
+  <a class="tab" href="#people" data-p="people">🔎 Люди</a>
  </div>
 </nav>
 
@@ -384,6 +391,35 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
    <button class="btn ghost" id="photo-btn" type="button" title="Отправить фото">📷</button>
    <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
    <input name="text" id="chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000">
+   <button class="btn" type="submit">➤</button>
+  </form>
+ </section>
+</div>
+
+<!-- ЛЮДИ: поиск собеседника по ФИО — обычный, не анонимный чат. Одна из фич сайта наравне с анонимным чатом -->
+<div class="page" id="p-people">
+ <section id="people-guard" hidden>
+  <div class="empty">Чтобы искать людей по имени, сначала войдите или зарегистрируйтесь.
+   <br><a class="btn sm" href="#chat" style="margin-top:14px;display:inline-block">Войти / Регистрация</a></div>
+ </section>
+
+ <section id="people-list">
+  <div class="head"><div><h2>Люди</h2><p>Найди однокурсника по имени и фамилии — это обычный чат, не анонимный: тебя видно по имени.</p></div></div>
+  <input type="text" id="people-search-input" class="people-search" placeholder="Имя и фамилия…" autocomplete="off" maxlength="80">
+  <div id="people-results"></div>
+  <div class="head" style="margin-top:32px"><div><h2 style="font-size:22px">Мои диалоги</h2></div></div>
+  <div id="people-dialogs"></div>
+ </section>
+
+ <section id="people-chat" hidden>
+  <div class="head"><div><h2 id="people-chat-partner-name">Собеседник</h2><p>Обычный чат — видно твоё имя, курс и специальность.</p></div>
+   <div class="actions">
+    <button class="btn ghost sm" id="people-back-btn" type="button">← К списку</button>
+   </div>
+  </div>
+  <div class="chat" id="people-chat-box" aria-live="polite"></div>
+  <form class="chat-input" id="people-send-form">
+   <input name="text" id="people-chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000">
    <button class="btn" type="submit">➤</button>
   </form>
  </section>
@@ -728,7 +764,8 @@ function handleLoginForm(form, statusId) {
       saveChatSession(body.token, body.user);
       status.textContent = "";
       form.reset();
-      chatSection("chat-search");
+      chatSection("chat-search");  // подготавливаем вкладку чата к следующему разу, но не открываем её сразу
+      location.hash = "#home";
     } catch {
       status.textContent = "Бэкенд недоступен. Попробуйте позже.";
     }
@@ -792,7 +829,8 @@ function initRegisterForm() {
       codeInput.hidden = true;
       verifyBtn.hidden = true;
       pendingEmail = null;
-      chatSection("chat-search");
+      chatSection("chat-search");  // подготавливаем вкладку чата к следующему разу, но не открываем её сразу
+      location.hash = "#home";
     } catch {
       status.textContent = "Бэкенд недоступен. Попробуйте позже.";
     }
@@ -985,20 +1023,151 @@ function initChat() {
   }).catch(() => {});
 }
 
+// ---------- Люди: поиск по ФИО и обычный (не анонимный) чат с конкретным человеком ----------
+let peopleActiveDialogId = null, peopleSince = 0, peoplePollTimer = null, peopleSearchTimer = null;
+
+function stopPeoplePolling() { if (peoplePollTimer) { clearInterval(peoplePollTimer); peoplePollTimer = null; } }
+function startPeoplePolling() { stopPeoplePolling(); peoplePollTimer = setInterval(pollPeopleChat, 2500); }
+
+function peopleUserLabel(u) {
+  const extra = [u.course ? `${u.course} курс` : "", u.specialty].filter(Boolean).join(" · ");
+  const name = `${esc(u.first_name)} ${esc(u.last_name)}` + (u.nickname ? ` · ${esc(u.nickname)}` : "");
+  return extra ? `${name}<small>${esc(extra)}</small>` : name;
+}
+
+function renderPeopleResults(users) {
+  const box = document.getElementById("people-results");
+  box.innerHTML = users.map(u => `<div class="people-row"><span>${peopleUserLabel(u)}</span>
+    <button type="button" class="btn sm" data-start-direct="${u.id}">Написать</button></div>`).join("");
+}
+
+function renderPeopleDialogs(dialogs) {
+  const box = document.getElementById("people-dialogs");
+  if (!dialogs.length) { box.innerHTML = `<div class="empty">Пока нет диалогов — найдите кого-нибудь выше.</div>`; return; }
+  box.innerHTML = dialogs.map(d => `<div class="people-row"><span>${peopleUserLabel(d.partner)}</span>
+    <button type="button" class="btn ghost sm" data-open-direct="${esc(d.dialog_id)}"
+      data-partner="${esc(d.partner.first_name + " " + d.partner.last_name)}">Открыть</button></div>`).join("");
+}
+
+async function loadPeopleDialogs() {
+  try {
+    const r = await chatFetch("/api/chat/direct/list");
+    renderPeopleDialogs((await r.json()).dialogs);
+  } catch {}
+}
+
+function initPeopleSearch() {
+  document.getElementById("people-search-input").addEventListener("input", e => {
+    clearTimeout(peopleSearchTimer);
+    const q = e.target.value.trim();
+    if (q.length < 2) { renderPeopleResults([]); return; }
+    peopleSearchTimer = setTimeout(async () => {
+      try {
+        const r = await chatFetch(`/api/chat/direct/search-users?q=${encodeURIComponent(q)}`);
+        renderPeopleResults((await r.json()).users);
+      } catch {}
+    }, 300);
+  });
+}
+
+function openDirectChat(dialogId, partnerName) {
+  peopleActiveDialogId = dialogId;
+  peopleSince = 0;
+  document.getElementById("people-chat-box").innerHTML = "";
+  document.getElementById("people-chat-partner-name").textContent = partnerName || "Собеседник";
+  document.getElementById("people-list").hidden = true;
+  document.getElementById("people-chat").hidden = false;
+  pollPeopleChat();
+  startPeoplePolling();
+}
+
+function closeDirectChat() {
+  stopPeoplePolling();
+  peopleActiveDialogId = null;
+  document.getElementById("people-chat").hidden = true;
+  document.getElementById("people-list").hidden = false;
+  loadPeopleDialogs();
+}
+
+function renderPeopleMessages(messages) {
+  if (!messages.length) return;
+  const box = document.getElementById("people-chat-box");
+  for (const m of messages) {
+    const div = document.createElement("div");
+    div.className = "msg " + (m.mine ? "r" : "l");
+    div.textContent = m.text || "";
+    box.appendChild(div);
+    peopleSince = Math.max(peopleSince, m.id);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+async function pollPeopleChat() {
+  if (!peopleActiveDialogId) return;
+  try {
+    const r = await chatFetch(`/api/chat/direct/poll?dialog_id=${encodeURIComponent(peopleActiveDialogId)}&since=${peopleSince}`);
+    renderPeopleMessages((await r.json()).messages);
+  } catch {}
+}
+
+function initPeople() {
+  initPeopleSearch();
+  document.getElementById("people-back-btn").addEventListener("click", closeDirectChat);
+  document.addEventListener("click", e => {
+    const startBtn = e.target.closest("[data-start-direct]");
+    if (startBtn) {
+      chatFetch("/api/chat/direct/start", {method: "POST", body: JSON.stringify({user_id: Number(startBtn.dataset.startDirect)})})
+        .then(r => r.json())
+        .then(body => openDirectChat(body.dialog_id, `${body.partner.first_name} ${body.partner.last_name}`))
+        .catch(() => {});
+      return;
+    }
+    const openBtn = e.target.closest("[data-open-direct]");
+    if (openBtn) openDirectChat(openBtn.dataset.openDirect, openBtn.dataset.partner);
+  });
+  document.getElementById("people-send-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const input = document.getElementById("people-chat-text");
+    const text = input.value;
+    if (!text.trim() || !peopleActiveDialogId) return;
+    input.value = "";
+    chatFetch("/api/chat/direct/send", {method: "POST", body: JSON.stringify({dialog_id: peopleActiveDialogId, text})})
+      .then(pollPeopleChat).catch(() => {});
+  });
+}
+
+function enterPeoplePage() {
+  stopPeoplePolling();
+  peopleActiveDialogId = null;
+  document.getElementById("people-chat").hidden = true;
+  if (!chatToken) {
+    document.getElementById("people-guard").hidden = false;
+    document.getElementById("people-list").hidden = true;
+    return;
+  }
+  document.getElementById("people-guard").hidden = true;
+  document.getElementById("people-list").hidden = false;
+  document.getElementById("people-search-input").value = "";
+  renderPeopleResults([]);
+  loadPeopleDialogs();
+}
+
 function route() {
   const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events", "summit", "chat"].includes(p) ? p : "home";
+  const id = ["home", "clubs", "events", "summit", "chat", "people"].includes(p) ? p : "home";
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
   window.scrollTo(0, 0);
   if (id === "summit") loadSummit();
+  if (id === "people") enterPeoplePage();
 }
+initChat();
+initPeople();
 addEventListener("hashchange", route);
 route();
 load();
 loadStats();
 initLeadForm();
-initChat();
 
 // Регистрация service worker — без него Android не предложит "Установить приложение"
 if ("serviceWorker" in navigator) {

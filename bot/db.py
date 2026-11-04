@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS web_dialogs (
     dialog_id   TEXT PRIMARY KEY,
     user_a      INTEGER NOT NULL,
     user_b      INTEGER NOT NULL,
+    mode        TEXT NOT NULL DEFAULT 'anonymous',  -- 'anonymous' (подбор по полу) | 'direct' (чат по ФИО)
     started_at  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS web_messages (
@@ -136,6 +137,9 @@ class Database:
             "web_messages": {
                 "kind": "ALTER TABLE web_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
                 "photo_id": "ALTER TABLE web_messages ADD COLUMN photo_id INTEGER",
+            },
+            "web_dialogs": {
+                "mode": "ALTER TABLE web_dialogs ADD COLUMN mode TEXT NOT NULL DEFAULT 'anonymous'",
             },
         }
         with self.conn:
@@ -335,15 +339,42 @@ class Database:
         with self.conn:
             self.conn.execute("DELETE FROM web_sessions WHERE token = ?", (token,))
 
-    def create_web_dialog(self, dialog_id: str, user_a: int, user_b: int) -> None:
+    def create_web_dialog(self, dialog_id: str, user_a: int, user_b: int, mode: str = "anonymous") -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT INTO web_dialogs (dialog_id, user_a, user_b, started_at) VALUES (?, ?, ?, ?)",
-                (dialog_id, user_a, user_b, _now()),
+                "INSERT INTO web_dialogs (dialog_id, user_a, user_b, mode, started_at) VALUES (?, ?, ?, ?, ?)",
+                (dialog_id, user_a, user_b, mode, _now()),
             )
 
     def get_web_dialog(self, dialog_id: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM web_dialogs WHERE dialog_id = ?", (dialog_id,)).fetchone()
+
+    def find_direct_dialog(self, user_a: int, user_b: int) -> sqlite3.Row | None:
+        """Прямой (по ФИО) диалог между двумя конкретными пользователями — один на пару,
+        в отличие от анонимных диалогов, которых может быть много подряд."""
+        return self.conn.execute(
+            """SELECT * FROM web_dialogs WHERE mode = 'direct'
+               AND ((user_a = ? AND user_b = ?) OR (user_a = ? AND user_b = ?))""",
+            (user_a, user_b, user_b, user_a),
+        ).fetchone()
+
+    def list_direct_dialogs(self, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT * FROM web_dialogs WHERE mode = 'direct' AND (user_a = ? OR user_b = ?)
+               ORDER BY started_at DESC""",
+            (user_id, user_id),
+        ).fetchall()
+
+    def search_web_users(self, query: str, exclude_id: int, limit: int = 20) -> list[sqlite3.Row]:
+        """Поиск по ФИО для прямого чата — не анонимного: возвращает только незабаненных."""
+        like = f"%{query}%"
+        return self.conn.execute(
+            """SELECT * FROM web_users
+               WHERE banned = 0 AND id != ?
+                 AND (first_name LIKE ? OR last_name LIKE ? OR (first_name || ' ' || last_name) LIKE ?)
+               ORDER BY first_name, last_name LIMIT ?""",
+            (exclude_id, like, like, like, limit),
+        ).fetchall()
 
     def add_web_message(self, dialog_id: str, sender_id: int, text: str,
                          kind: str = "text", photo_id: int | None = None) -> int:

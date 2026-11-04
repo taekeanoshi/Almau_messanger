@@ -477,6 +477,105 @@ async def chat_stop(request: web.Request) -> web.Response:
     return await _leave(request, requeue=False)
 
 
+# ---------- Прямой чат по ФИО (не анонимный): ищешь конкретного человека и пишешь ему ----------
+# Анонимный чат выше — это одна из фич сайта, а не единственный способ пообщаться. Здесь —
+# обычный поиск по имени/фамилии среди зарегистрированных и постоянный (не одноразовый,
+# как в подборе по полу) диалог с конкретным человеком, по одному диалогу на пару.
+
+MIN_SEARCH_LEN = 2
+SEARCH_LIMIT = 20
+
+
+def _public_user(row) -> dict:
+    return {
+        "id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"],
+        "nickname": row["nickname"], "course": row["course"], "specialty": row["specialty"],
+    }
+
+
+async def search_users(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    query = request.query.get("q", "").strip()[:MAX_NAME_LEN]
+    if len(query) < MIN_SEARCH_LEN:
+        return web.json_response({"users": []})
+
+    db: Database = request.app["db"]
+    rows = db.search_web_users(query, exclude_id=user_id, limit=SEARCH_LIMIT)
+    return web.json_response({"users": [_public_user(r) for r in rows]})
+
+
+async def direct_start(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    try:
+        target_id = int(data.get("user_id"))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason="user_id is required")
+    if target_id == user_id:
+        raise web.HTTPBadRequest(reason="can't start a dialog with yourself")
+
+    db: Database = request.app["db"]
+    target = db.get_web_user(target_id)
+    if target is None or target["banned"]:
+        raise web.HTTPNotFound(reason="user not found")
+
+    dialog = db.find_direct_dialog(user_id, target_id)
+    if dialog is None:
+        dialog_id = secrets.token_hex(8)
+        db.create_web_dialog(dialog_id, user_id, target_id, mode="direct")
+    else:
+        dialog_id = dialog["dialog_id"]
+    return web.json_response({"ok": True, "dialog_id": dialog_id, "partner": _public_user(target)})
+
+
+def _other_participant(dialog, user_id: int) -> int:
+    return dialog["user_b"] if dialog["user_a"] == user_id else dialog["user_a"]
+
+
+async def direct_list(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    out = []
+    for dialog in db.list_direct_dialogs(user_id):
+        partner = db.get_web_user(_other_participant(dialog, user_id))
+        if partner is None:
+            continue
+        out.append({"dialog_id": dialog["dialog_id"], "partner": _public_user(partner)})
+    return web.json_response({"dialogs": out})
+
+
+def _require_direct_dialog(db: Database, dialog_id: str, user_id: int):
+    dialog = db.get_web_dialog(dialog_id)
+    if dialog is None or dialog["mode"] != "direct" or user_id not in (dialog["user_a"], dialog["user_b"]):
+        raise web.HTTPForbidden(reason="not a participant of this dialog")
+    return dialog
+
+
+async def direct_poll(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    dialog_id = request.query.get("dialog_id", "").strip()
+    db: Database = request.app["db"]
+    _require_direct_dialog(db, dialog_id, user_id)
+
+    since = int(request.query.get("since", "0") or "0")
+    messages = db.web_messages_since(dialog_id, since)
+    return web.json_response({"messages": [_serialize_message(m, user_id) for m in messages]})
+
+
+async def direct_send(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    dialog_id = str(data.get("dialog_id", "")).strip()
+    text = str(data.get("text", "")).strip()[:MAX_MESSAGE_LEN]
+    if not text:
+        raise web.HTTPBadRequest(reason="text is required")
+
+    db: Database = request.app["db"]
+    _require_direct_dialog(db, dialog_id, user_id)
+    msg_id = db.add_web_message(dialog_id, user_id, text)
+    return web.json_response({"ok": True, "id": msg_id})
+
+
 def register_routes(app: web.Application, brevo_api_key: str = "", brevo_sender_email: str = "",
                      brevo_sender_name: str = "Pople") -> None:
     app["web_mm"] = WebMatchmaker()
@@ -497,3 +596,8 @@ def register_routes(app: web.Application, brevo_api_key: str = "", brevo_sender_
     app.router.add_post("/api/chat/reveal", reveal)
     app.router.add_post("/api/chat/next", chat_next)
     app.router.add_post("/api/chat/stop", chat_stop)
+    app.router.add_get("/api/chat/direct/search-users", search_users)
+    app.router.add_post("/api/chat/direct/start", direct_start)
+    app.router.add_get("/api/chat/direct/list", direct_list)
+    app.router.add_get("/api/chat/direct/poll", direct_poll)
+    app.router.add_post("/api/chat/direct/send", direct_send)

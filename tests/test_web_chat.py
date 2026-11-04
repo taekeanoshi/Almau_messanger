@@ -428,6 +428,159 @@ def test_reveal_sends_full_name_message(monkeypatch):
     run(go())
 
 
+def test_search_users_by_name(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            u1 = await _register_and_verify(client, sent, "Аян", "Касымов", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            await _register_and_verify(client, sent, "Берік", "Қасымов", "+77001110002",
+                                       "b@example.com", "secret1", "male")
+            await _register_and_verify(client, sent, "Әсел", "Нұрлан", "+77001110003",
+                                       "c@example.com", "secret1", "female")
+            t1 = u1["token"]
+
+            # Короткий запрос (1 символ) не ищет — слишком широкий скан
+            resp = await client.get("/api/chat/direct/search-users", headers=auth(t1), params={"q": "а"})
+            assert (await resp.json())["users"] == []
+
+            # По имени находит нужного человека, но не самого себя
+            resp = await client.get("/api/chat/direct/search-users", headers=auth(t1), params={"q": "Нұрлан"})
+            found = (await resp.json())["users"]
+            assert len(found) == 1 and found[0]["first_name"] == "Әсел"
+            assert all(u["id"] != 1 for u in found)  # себя в выдаче нет
+
+            # Без токена — 401
+            resp = await client.get("/api/chat/direct/search-users", params={"q": "Касым"})
+            assert resp.status == 401
+
+    run(go())
+
+
+def test_direct_chat_start_is_idempotent_and_private(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            u1 = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                            "b@example.com", "secret1", "male")
+            u3 = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
+                                            "c@example.com", "secret1", "female")
+            t1, t2, t3 = u1["token"], u2["token"], u3["token"]
+            id1, id2 = u1["user"]["id"], u2["user"]["id"]
+
+            resp = await client.post("/api/chat/direct/start", headers=auth(t1), json={"user_id": id2})
+            assert resp.status == 200
+            body = await resp.json()
+            dialog_id = body["dialog_id"]
+            assert body["partner"]["first_name"] == "Берик"
+
+            # Повторный старт того же диалога возвращает тот же dialog_id, не плодит дубликаты
+            resp = await client.post("/api/chat/direct/start", headers=auth(t1), json={"user_id": id2})
+            assert (await resp.json())["dialog_id"] == dialog_id
+
+            # И с другой стороны — тот же диалог
+            resp = await client.post("/api/chat/direct/start", headers=auth(t2), json={"user_id": id1})
+            assert (await resp.json())["dialog_id"] == dialog_id
+
+            # Нельзя начать диалог с самим собой
+            resp = await client.post("/api/chat/direct/start", headers=auth(t1), json={"user_id": id1})
+            assert resp.status == 400
+
+            # Несуществующий пользователь — 404
+            resp = await client.post("/api/chat/direct/start", headers=auth(t1), json={"user_id": 99999})
+            assert resp.status == 404
+
+            # Сообщения видны только участникам
+            resp = await client.post("/api/chat/direct/send", headers=auth(t1),
+                                     json={"dialog_id": dialog_id, "text": "привет, Берик"})
+            assert resp.status == 200
+
+            resp = await client.get("/api/chat/direct/poll", headers=auth(t2), params={"dialog_id": dialog_id})
+            messages = (await resp.json())["messages"]
+            assert len(messages) == 1 and messages[0]["text"] == "привет, Берик" and messages[0]["mine"] is False
+
+            # Посторонний (не участник этого диалога) доступа не получает
+            resp = await client.get("/api/chat/direct/poll", headers=auth(t3), params={"dialog_id": dialog_id})
+            assert resp.status == 403
+            resp = await client.post("/api/chat/direct/send", headers=auth(t3),
+                                     json={"dialog_id": dialog_id, "text": "подслушиваю"})
+            assert resp.status == 403
+
+            # Диалог появляется в «моих диалогах» у обоих участников
+            resp = await client.get("/api/chat/direct/list", headers=auth(t1))
+            dialogs = (await resp.json())["dialogs"]
+            assert len(dialogs) == 1 and dialogs[0]["dialog_id"] == dialog_id
+            assert dialogs[0]["partner"]["first_name"] == "Берик"
+
+            resp = await client.get("/api/chat/direct/list", headers=auth(t2))
+            dialogs = (await resp.json())["dialogs"]
+            assert len(dialogs) == 1 and dialogs[0]["partner"]["first_name"] == "Аян"
+
+            # У постороннего диалогов нет
+            resp = await client.get("/api/chat/direct/list", headers=auth(t3))
+            assert (await resp.json())["dialogs"] == []
+
+    run(go())
+
+
+def test_direct_chat_is_independent_from_anonymous_matchmaking(monkeypatch):
+    """Прямой чат по ФИО не завязан на очередь WebMatchmaker — можно писать, даже если
+    в анонимном подборе пусто/никого нет."""
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            u1 = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                            "b@example.com", "secret1", "male")
+            t1 = u1["token"]
+            id2 = u2["user"]["id"]
+
+            # Никто не искал анонимный чат — но прямой чат по ФИО всё равно работает
+            resp = await client.post("/api/chat/direct/start", headers=auth(t1), json={"user_id": id2})
+            assert resp.status == 200
+            dialog_id = (await resp.json())["dialog_id"]
+
+            resp = await client.get("/api/chat/poll", headers=auth(t1))
+            assert (await resp.json())["status"] == "idle"  # анонимный статус не затронут
+
+            resp = await client.post("/api/chat/direct/send", headers=auth(t1),
+                                     json={"dialog_id": dialog_id, "text": "привет"})
+            assert resp.status == 200
+
+    run(go())
+
+
+def test_email_can_only_be_used_once(monkeypatch):
+    """Почта, занятая существующим аккаунтом (даже неподтверждённым), не даёт зарегистрироваться повторно."""
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            status, _ = await _register(client, "Аян", "Касым", "+77001110001", "dup@example.com", "secret1", "male")
+            assert status == 201
+
+            # Та же почта, даже с другим телефоном и до подтверждения первой — конфликт
+            status, _ = await _register(client, "Другой", "Чел", "+77001110099", "dup@example.com", "secret2", "female")
+            assert status == 409
+
+            # После подтверждения первой — тоже конфликт, почта навсегда занята этим аккаунтом
+            await client.post("/api/chat/otp/verify", json={"email": "dup@example.com", "code": sent["dup@example.com"]})
+            status, _ = await _register(client, "Третий", "Чел", "+77001110098", "dup@example.com", "secret3", "male")
+            assert status == 409
+
+    run(go())
+
+
 def test_stats_include_web_chat_counts(monkeypatch):
     sent = capture_otp_emails(monkeypatch)
 
