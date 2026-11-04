@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS web_users (
     password_salt TEXT NOT NULL,
     email_verified INTEGER NOT NULL DEFAULT 0,  -- код из письма подтверждён хотя бы раз
     gender        TEXT NOT NULL,          -- 'male' | 'female'
+    course        TEXT NOT NULL DEFAULT '',
+    specialty     TEXT NOT NULL DEFAULT '',
+    nickname      TEXT NOT NULL DEFAULT '',  -- анонимный ник, виден собеседнику вместо имени
     banned        INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
 );
@@ -78,7 +81,17 @@ CREATE TABLE IF NOT EXISTS web_messages (
     dialog_id   TEXT NOT NULL,
     sender_id   INTEGER NOT NULL,
     text        TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'text',  -- 'text' | 'photo' | 'reveal'
+    photo_id    INTEGER,
     created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS web_photos (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    dialog_id     TEXT NOT NULL,
+    sender_id     INTEGER NOT NULL,
+    content_type  TEXT NOT NULL,
+    data          BLOB NOT NULL,
+    created_at    TEXT NOT NULL
 );
 """
 
@@ -116,6 +129,13 @@ class Database:
                 "password_hash": "ALTER TABLE web_users ADD COLUMN password_hash TEXT",
                 "password_salt": "ALTER TABLE web_users ADD COLUMN password_salt TEXT",
                 "email_verified": "ALTER TABLE web_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0",
+                "course": "ALTER TABLE web_users ADD COLUMN course TEXT NOT NULL DEFAULT ''",
+                "specialty": "ALTER TABLE web_users ADD COLUMN specialty TEXT NOT NULL DEFAULT ''",
+                "nickname": "ALTER TABLE web_users ADD COLUMN nickname TEXT NOT NULL DEFAULT ''",
+            },
+            "web_messages": {
+                "kind": "ALTER TABLE web_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
+                "photo_id": "ALTER TABLE web_messages ADD COLUMN photo_id INTEGER",
             },
         }
         with self.conn:
@@ -251,12 +271,15 @@ class Database:
     # ---------- веб-чат: аккаунты, сессии, диалоги (отдельно от Telegram-бота) ----------
 
     def create_web_user(self, first_name: str, last_name: str, phone: str, email: str,
-                         password_hash: str, password_salt: str, gender: str) -> int:
+                         password_hash: str, password_salt: str, gender: str,
+                         course: str, specialty: str, nickname: str) -> int:
         with self.conn:
             cur = self.conn.execute(
-                """INSERT INTO web_users (first_name, last_name, phone, email, password_hash, password_salt, gender, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (first_name, last_name, phone, email, password_hash, password_salt, gender, _now()),
+                """INSERT INTO web_users (first_name, last_name, phone, email, password_hash, password_salt,
+                                          gender, course, specialty, nickname, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (first_name, last_name, phone, email, password_hash, password_salt, gender,
+                 course, specialty, nickname, _now()),
             )
         return cur.lastrowid
 
@@ -319,11 +342,16 @@ class Database:
                 (dialog_id, user_a, user_b, _now()),
             )
 
-    def add_web_message(self, dialog_id: str, sender_id: int, text: str) -> int:
+    def get_web_dialog(self, dialog_id: str) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM web_dialogs WHERE dialog_id = ?", (dialog_id,)).fetchone()
+
+    def add_web_message(self, dialog_id: str, sender_id: int, text: str,
+                         kind: str = "text", photo_id: int | None = None) -> int:
         with self.conn:
             cur = self.conn.execute(
-                "INSERT INTO web_messages (dialog_id, sender_id, text, created_at) VALUES (?, ?, ?, ?)",
-                (dialog_id, sender_id, text, _now()),
+                """INSERT INTO web_messages (dialog_id, sender_id, text, kind, photo_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (dialog_id, sender_id, text, kind, photo_id, _now()),
             )
         return cur.lastrowid
 
@@ -331,3 +359,17 @@ class Database:
         return self.conn.execute(
             "SELECT * FROM web_messages WHERE dialog_id = ? AND id > ? ORDER BY id", (dialog_id, since_id)
         ).fetchall()
+
+    # ---------- фото в веб-чате ----------
+
+    def add_web_photo(self, dialog_id: str, sender_id: int, content_type: str, data: bytes) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO web_photos (dialog_id, sender_id, content_type, data, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (dialog_id, sender_id, content_type, data, _now()),
+            )
+        return cur.lastrowid
+
+    def get_web_photo(self, photo_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM web_photos WHERE id = ?", (photo_id,)).fetchone()

@@ -15,6 +15,7 @@
 не нужно. Диалоги и сообщения — в БД, чтобы их можно было отдавать через
 поллинг (GET /api/chat/poll) по мере прихода новых сообщений.
 """
+import base64
 import hashlib
 import hmac
 import logging
@@ -30,10 +31,14 @@ from bot.db import Database
 logger = logging.getLogger(__name__)
 
 MAX_NAME_LEN = 80
+MAX_FIELD_LEN = 120
+MAX_NICKNAME_LEN = 40
 MAX_MESSAGE_LEN = 2000
 MIN_PASSWORD_LEN = 6
 GENDERS = {"male", "female"}
 PREFERENCES = {"any", "same", "opposite"}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -189,6 +194,9 @@ async def register(request: web.Request) -> web.Response:
     email = _normalize_email(str(data.get("email", "")))
     password = str(data.get("password", ""))
     gender = str(data.get("gender", "")).strip().lower()
+    course = str(data.get("course", "")).strip()[:MAX_FIELD_LEN]
+    specialty = str(data.get("specialty", "")).strip()[:MAX_FIELD_LEN]
+    nickname = str(data.get("nickname", "")).strip()[:MAX_NICKNAME_LEN]
 
     if not first_name or not last_name:
         raise web.HTTPBadRequest(reason="first_name and last_name are required")
@@ -200,13 +208,20 @@ async def register(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason=f"password must be at least {MIN_PASSWORD_LEN} characters")
     if gender not in GENDERS:
         raise web.HTTPBadRequest(reason="gender must be male or female")
+    if not course:
+        raise web.HTTPBadRequest(reason="course is required")
+    if not specialty:
+        raise web.HTTPBadRequest(reason="specialty is required")
+    if not nickname:
+        nickname = f"Аноним-{secrets.randbelow(9000) + 1000}"
 
     db: Database = request.app["db"]
     if db.get_web_user_by_phone(phone) is not None or db.get_web_user_by_email(email) is not None:
         raise web.HTTPConflict(reason="phone or email already registered")
 
     password_hash, salt = _hash_password(password)
-    db.create_web_user(first_name, last_name, phone, email, password_hash, salt, gender)
+    db.create_web_user(first_name, last_name, phone, email, password_hash, salt, gender,
+                        course, specialty, nickname)
 
     code = _generate_otp()
     db.save_otp_code(email, _hash_otp(code), _otp_expiry_iso())
@@ -231,7 +246,8 @@ async def login(request: web.Request) -> web.Response:
     token = secrets.token_urlsafe(32)
     db.create_web_session(token, row["id"])
     return web.json_response(
-        {"ok": True, "token": token, "user": {"id": row["id"], "first_name": row["first_name"], "gender": row["gender"]}}
+        {"ok": True, "token": token, "user": {"id": row["id"], "first_name": row["first_name"],
+                                               "gender": row["gender"], "nickname": row["nickname"]}}
     )
 
 
@@ -281,7 +297,8 @@ async def otp_verify(request: web.Request) -> web.Response:
     token = secrets.token_urlsafe(32)
     db.create_web_session(token, row["id"])
     return web.json_response(
-        {"ok": True, "token": token, "user": {"id": row["id"], "first_name": row["first_name"], "gender": row["gender"]}}
+        {"ok": True, "token": token, "user": {"id": row["id"], "first_name": row["first_name"],
+                                               "gender": row["gender"], "nickname": row["nickname"]}}
     )
 
 
@@ -298,7 +315,22 @@ async def me(request: web.Request) -> web.Response:
     row = request.app["db"].get_web_user(user_id)
     if row is None:
         raise web.HTTPUnauthorized(reason="user not found")
-    return web.json_response({"id": row["id"], "first_name": row["first_name"], "gender": row["gender"]})
+    return web.json_response({"id": row["id"], "first_name": row["first_name"], "gender": row["gender"],
+                               "nickname": row["nickname"], "course": row["course"], "specialty": row["specialty"]})
+
+
+def _partner_nickname(db: Database, partner_id: int) -> str:
+    row = db.get_web_user(partner_id)
+    return row["nickname"] if row is not None else "Собеседник"
+
+
+def _serialize_message(m, user_id: int) -> dict:
+    out = {"id": m["id"], "mine": m["sender_id"] == user_id, "kind": m["kind"]}
+    if m["kind"] == "photo":
+        out["photo_id"] = m["photo_id"]
+    else:
+        out["text"] = m["text"]
+    return out
 
 
 def _start_search(request: web.Request, user_id: int, preference: str) -> dict:
@@ -310,6 +342,7 @@ def _start_search(request: web.Request, user_id: int, preference: str) -> dict:
     result = mm.search(user_id, row["gender"], preference)
     if result["status"] == "matched":
         db.create_web_dialog(result["dialog_id"], user_id, result["partner_id"])
+        result["partner_nickname"] = _partner_nickname(db, result["partner_id"])
     return result
 
 
@@ -333,7 +366,8 @@ async def poll(request: web.Request) -> web.Response:
     return web.json_response({
         "status": "matched",
         "dialog_id": state["dialog_id"],
-        "messages": [{"id": m["id"], "mine": m["sender_id"] == user_id, "text": m["text"]} for m in messages],
+        "partner_nickname": _partner_nickname(db, state["partner_id"]),
+        "messages": [_serialize_message(m, user_id) for m in messages],
     })
 
 
@@ -351,6 +385,68 @@ async def send(request: web.Request) -> web.Response:
         raise web.HTTPConflict(reason="not in this dialog")
 
     msg_id = request.app["db"].add_web_message(dialog_id, user_id, text)
+    return web.json_response({"ok": True, "id": msg_id})
+
+
+async def send_photo(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    dialog_id = str(data.get("dialog_id", "")).strip()
+    content_type = str(data.get("content_type", "")).strip().lower()
+    raw_data = str(data.get("data", ""))
+
+    if content_type not in PHOTO_CONTENT_TYPES:
+        raise web.HTTPBadRequest(reason="unsupported photo type")
+    try:
+        photo_bytes = base64.b64decode(raw_data, validate=True)
+    except Exception:
+        raise web.HTTPBadRequest(reason="invalid photo data")
+    if not photo_bytes or len(photo_bytes) > MAX_PHOTO_BYTES:
+        raise web.HTTPBadRequest(reason="photo too large or empty")
+
+    mm: WebMatchmaker = request.app["web_mm"]
+    state = mm.status(user_id)
+    if state["status"] != "matched" or state["dialog_id"] != dialog_id:
+        raise web.HTTPConflict(reason="not in this dialog")
+
+    db: Database = request.app["db"]
+    photo_id = db.add_web_photo(dialog_id, user_id, content_type, photo_bytes)
+    msg_id = db.add_web_message(dialog_id, user_id, "", kind="photo", photo_id=photo_id)
+    return web.json_response({"ok": True, "id": msg_id, "photo_id": photo_id})
+
+
+async def get_photo(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    try:
+        photo_id = int(request.match_info["photo_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid photo id")
+
+    db: Database = request.app["db"]
+    photo = db.get_web_photo(photo_id)
+    if photo is None:
+        raise web.HTTPNotFound(reason="photo not found")
+    dialog = db.get_web_dialog(photo["dialog_id"])
+    if dialog is None or user_id not in (dialog["user_a"], dialog["user_b"]):
+        raise web.HTTPForbidden(reason="not a participant of this dialog")
+
+    return web.Response(body=photo["data"], content_type=photo["content_type"])
+
+
+async def reveal(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    dialog_id = str(data.get("dialog_id", "")).strip()
+
+    mm: WebMatchmaker = request.app["web_mm"]
+    state = mm.status(user_id)
+    if state["status"] != "matched" or state["dialog_id"] != dialog_id:
+        raise web.HTTPConflict(reason="not in this dialog")
+
+    db: Database = request.app["db"]
+    row = db.get_web_user(user_id)
+    full_name = f"{row['first_name']} {row['last_name']}".strip()
+    msg_id = db.add_web_message(dialog_id, user_id, full_name, kind="reveal")
     return web.json_response({"ok": True, "id": msg_id})
 
 
@@ -396,5 +492,8 @@ def register_routes(app: web.Application, brevo_api_key: str = "", brevo_sender_
     app.router.add_post("/api/chat/search", search)
     app.router.add_get("/api/chat/poll", poll)
     app.router.add_post("/api/chat/send", send)
+    app.router.add_post("/api/chat/send-photo", send_photo)
+    app.router.add_get("/api/chat/photo/{photo_id}", get_photo)
+    app.router.add_post("/api/chat/reveal", reveal)
     app.router.add_post("/api/chat/next", chat_next)
     app.router.add_post("/api/chat/stop", chat_stop)

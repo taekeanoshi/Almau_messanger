@@ -71,7 +71,9 @@ def test_opening_db_with_outdated_web_users_schema_adds_missing_columns(tmp_path
 
     db = Database(db_path)
     user_id = db.create_web_user("Хамит", "Хасанов", "+77001234567", "hamit@example.com",
-                                 "hash", "salt", "male")
+                                 "hash", "salt", "male", "2", "IT", "Хамит")
     row = db.get_web_user(user_id)
     assert row["email"] == "hamit@example.com"
     assert row["email_verified"] == 0
+    assert row["course"] == "2"
+    assert row["nickname"] == "Хамит"

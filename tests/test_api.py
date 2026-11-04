@@ -110,6 +110,7 @@ def test_post_event_going_requires_a_registered_account(monkeypatch):
             await client.post("/api/chat/register", json={
                 "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
                 "email": "ayan@example.com", "password": "secret1", "gender": "male",
+                "course": "2", "specialty": "Computer Science",
             })
             verify = await client.post("/api/chat/otp/verify",
                                        json={"email": "ayan@example.com", "code": sent["ayan@example.com"]})

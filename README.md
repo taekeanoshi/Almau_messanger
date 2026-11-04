@@ -125,14 +125,18 @@ python -m bot.main
 | GET | `/api/stats` | публичная статистика: пользователи, диалоги, заявки, аккаунты и диалоги чата |
 | POST | `/api/leads` | сохраняет заявку с формы сайта (`name`, `contact`, `message`, опц. `event_id`) в БД |
 | GET | `/api/leads?token=<ADMIN_TOKEN>` | просмотр последних заявок без бота (401 без правильного токена) |
-| POST | `/api/chat/register` | аккаунт в «Анонимном чате»: `first_name`, `last_name`, `phone`, `email`, `gender` — выдаёт токен сразу |
-| POST | `/api/chat/otp/request` | `{"email"}` — шлёт 6-значный код на почту, действует 10 минут |
-| POST | `/api/chat/otp/verify` | `{"email", "code"}` — вход по коду, выдаёт токен сессии |
+| POST | `/api/chat/register` | аккаунт в «Анонимном чате»: `first_name`, `last_name`, `phone`, `email`, `password`, `gender`, `course`, `specialty`, опц. `nickname` — сразу шлёт код подтверждения на почту |
+| POST | `/api/chat/login` | `{"email", "password"}` — вход по паролю (нужна подтверждённая почта), выдаёт токен сессии |
+| POST | `/api/chat/otp/request` | `{"email"}` — повторно шлёт 6-значный код на почту, действует 10 минут |
+| POST | `/api/chat/otp/verify` | `{"email", "code"}` — подтверждает почту кодом (один раз, после регистрации), выдаёт токен сессии |
 | POST | `/api/chat/logout` | завершает сессию по текущему токену |
-| GET | `/api/chat/me` | данные текущего пользователя по токену |
+| GET | `/api/chat/me` | данные текущего пользователя по токену (имя, пол, ник, курс, специальность) |
 | POST | `/api/chat/search` | `{"preference": "any"\|"same"\|"opposite"}` — встать в очередь/найти собеседника по полу |
-| GET | `/api/chat/poll?since=<id>` | опрос раз в 2.5 сек: статус (`idle`/`waiting`/`matched`) и новые сообщения |
-| POST | `/api/chat/send` | `{"dialog_id", "text"}` — отправить сообщение в активном диалоге |
+| GET | `/api/chat/poll?since=<id>` | опрос раз в 2.5 сек: статус (`idle`/`waiting`/`matched`), ник собеседника и новые сообщения |
+| POST | `/api/chat/send` | `{"dialog_id", "text"}` — отправить текстовое сообщение в активном диалоге |
+| POST | `/api/chat/send-photo` | `{"dialog_id", "content_type", "data"}` — отправить фото (base64, до 5 МБ, jpeg/png/webp/gif) |
+| GET | `/api/chat/photo/{photo_id}` | отдаёт байты фото — только участникам диалога, иначе 403 |
+| POST | `/api/chat/reveal` | `{"dialog_id"}` — раскрыть собеседнику своё настоящее имя системным сообщением в чате |
 | POST | `/api/chat/next` / `/api/chat/stop` | закончить диалог и (не)встать в поиск заново |
 
 Проверить локально после `python -m bot.api_server`:

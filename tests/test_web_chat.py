@@ -36,11 +36,16 @@ def capture_otp_emails(monkeypatch):
     return sent
 
 
-async def _register(client, first_name, last_name, phone, email, password, gender):
-    resp = await client.post("/api/chat/register", json={
+async def _register(client, first_name, last_name, phone, email, password, gender,
+                     course="2", specialty="Computer Science", nickname=""):
+    payload = {
         "first_name": first_name, "last_name": last_name, "phone": phone,
         "email": email, "password": password, "gender": gender,
-    })
+        "course": course, "specialty": specialty,
+    }
+    if nickname:
+        payload["nickname"] = nickname
+    resp = await client.post("/api/chat/register", json=payload)
     body = await resp.json() if resp.status in (200, 201) else None
     return resp.status, body
 
@@ -169,6 +174,33 @@ def test_registration_validation():
             status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
                                         "a@example.com", "secret1", "alien")
             assert status == 400  # пол не male/female
+
+            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
+                                        "a@example.com", "secret1", "male", course="")
+            assert status == 400  # нет курса
+
+            status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
+                                        "a@example.com", "secret1", "male", specialty="")
+            assert status == 400  # нет специальности
+
+    run(go())
+
+
+def test_nickname_defaults_when_blank(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            u = await _register_and_verify(client, sent, "Аян", "Касым", "+77001234567",
+                                           "ayan@example.com", "secret1", "male")
+            assert u["user"]["nickname"]  # автоматически сгенерирован, непустой
+
+            resp = await client.get("/api/chat/me", headers=auth(u["token"]))
+            body = await resp.json()
+            assert body["nickname"] == u["user"]["nickname"]
+            assert body["course"] == "2"
+            assert body["specialty"] == "Computer Science"
 
     run(go())
 
@@ -311,6 +343,87 @@ def test_unauthorized_without_token():
             assert resp.status == 401
             resp = await client.get("/api/chat/poll", headers=auth("garbage"))
             assert resp.status == 401
+
+    run(go())
+
+
+def test_send_and_fetch_photo(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
+                                            "b@example.com", "secret1", "female")
+            u3 = await _register_and_verify(client, sent, "В", "В", "+77001110003",
+                                            "c@example.com", "secret1", "female")
+            t1, t2, t3 = u1["token"], u2["token"], u3["token"]
+
+            await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
+            resp = await client.post("/api/chat/search", headers=auth(t2), json={"preference": "any"})
+            dialog_id = (await resp.json())["dialog_id"]
+
+            import base64
+            photo_bytes = b"\x89PNG fake-bytes"
+            resp = await client.post("/api/chat/send-photo", headers=auth(t1), json={
+                "dialog_id": dialog_id, "content_type": "image/png",
+                "data": base64.b64encode(photo_bytes).decode(),
+            })
+            assert resp.status == 200
+            photo_id = (await resp.json())["photo_id"]
+
+            # Собеседник из того же диалога может скачать фото
+            resp = await client.get(f"/api/chat/photo/{photo_id}", headers=auth(t2))
+            assert resp.status == 200
+            assert await resp.read() == photo_bytes
+            assert resp.headers["Content-Type"] == "image/png"
+
+            # Сообщение приходит с kind=photo и photo_id, без текста
+            resp = await client.get("/api/chat/poll", headers=auth(t2))
+            messages = (await resp.json())["messages"]
+            assert messages[0]["kind"] == "photo"
+            assert messages[0]["photo_id"] == photo_id
+
+            # Посторонний (не участник диалога) фото получить не может
+            resp = await client.get(f"/api/chat/photo/{photo_id}", headers=auth(t3))
+            assert resp.status == 403
+
+            # Неподходящий content_type отклоняется
+            resp = await client.post("/api/chat/send-photo", headers=auth(t1), json={
+                "dialog_id": dialog_id, "content_type": "application/pdf",
+                "data": base64.b64encode(photo_bytes).decode(),
+            })
+            assert resp.status == 400
+
+    run(go())
+
+
+def test_reveal_sends_full_name_message(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client()
+        async with client:
+            u1 = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                            "a@example.com", "secret1", "male")
+            u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
+                                            "b@example.com", "secret1", "female")
+            t1, t2 = u1["token"], u2["token"]
+
+            await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
+            resp = await client.post("/api/chat/search", headers=auth(t2), json={"preference": "any"})
+            dialog_id = (await resp.json())["dialog_id"]
+
+            resp = await client.post("/api/chat/reveal", headers=auth(t1), json={"dialog_id": dialog_id})
+            assert resp.status == 200
+
+            resp = await client.get("/api/chat/poll", headers=auth(t2))
+            messages = (await resp.json())["messages"]
+            assert messages[0]["kind"] == "reveal"
+            assert messages[0]["text"] == "Аян Касым"
+            assert messages[0]["mine"] is False
 
     run(go())
 
