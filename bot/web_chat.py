@@ -37,6 +37,7 @@ MAX_MESSAGE_LEN = 2000
 MIN_PASSWORD_LEN = 6
 GENDERS = {"male", "female"}
 PREFERENCES = {"any", "same", "opposite"}
+ACCOUNT_TYPES = {"student", "teacher", "registrar"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -184,20 +185,32 @@ def require_session(request: web.Request) -> int:
     return user_id
 
 
+def _hash_invite_key(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
 async def register(request: web.Request) -> web.Response:
     """Создаёт аккаунт (неподтверждённый) и сразу шлёт код на почту — подтвердить
-    его нужно один раз через /api/chat/otp/verify, чтобы получить токен и войти."""
+    его нужно один раз через /api/chat/otp/verify, чтобы получить токен и войти.
+
+    account_type различает три сценария регистрации:
+    - 'student' (по умолчанию) — открытая регистрация, как раньше: курс, специальность,
+      пол (для подбора в анонимном чате) и анонимный ник обязательны/автогенерируются.
+    - 'teacher' / 'registrar' — аккаунт сотрудника (ведёт дисциплины и ставит оценки/
+      посещаемость, либо управляет расписанием). Эти роли нельзя получить просто
+      регистрацией: нужен invite_key, текущее значение которого знает только админ
+      (см. /api/admin/rotate-invite-key) и кому он его передал. Курс/специальность/пол/
+      ник для сотрудников не собираем — им не нужны ни подбор по полу, ни анонимный чат."""
     data = await read_json_body(request)
     first_name = str(data.get("first_name", "")).strip()[:MAX_NAME_LEN]
     last_name = str(data.get("last_name", "")).strip()[:MAX_NAME_LEN]
     phone = _normalize_phone(str(data.get("phone", "")))
     email = _normalize_email(str(data.get("email", "")))
     password = str(data.get("password", ""))
-    gender = str(data.get("gender", "")).strip().lower()
-    course = str(data.get("course", "")).strip()[:MAX_FIELD_LEN]
-    specialty = str(data.get("specialty", "")).strip()[:MAX_FIELD_LEN]
-    nickname = str(data.get("nickname", "")).strip()[:MAX_NICKNAME_LEN]
+    account_type = str(data.get("account_type", "student")).strip().lower() or "student"
 
+    if account_type not in ACCOUNT_TYPES:
+        raise web.HTTPBadRequest(reason="account_type must be student, teacher or registrar")
     if not first_name or not last_name:
         raise web.HTTPBadRequest(reason="first_name and last_name are required")
     if len(phone) < 7:
@@ -206,22 +219,39 @@ async def register(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="invalid email")
     if len(password) < MIN_PASSWORD_LEN:
         raise web.HTTPBadRequest(reason=f"password must be at least {MIN_PASSWORD_LEN} characters")
-    if gender not in GENDERS:
-        raise web.HTTPBadRequest(reason="gender must be male or female")
-    if not course:
-        raise web.HTTPBadRequest(reason="course is required")
-    if not specialty:
-        raise web.HTTPBadRequest(reason="specialty is required")
-    if not nickname:
-        nickname = f"Аноним-{secrets.randbelow(9000) + 1000}"
 
     db: Database = request.app["db"]
+
+    if account_type == "student":
+        gender = str(data.get("gender", "")).strip().lower()
+        course = str(data.get("course", "")).strip()[:MAX_FIELD_LEN]
+        specialty = str(data.get("specialty", "")).strip()[:MAX_FIELD_LEN]
+        nickname = str(data.get("nickname", "")).strip()[:MAX_NICKNAME_LEN]
+        if gender not in GENDERS:
+            raise web.HTTPBadRequest(reason="gender must be male or female")
+        if not course:
+            raise web.HTTPBadRequest(reason="course is required")
+        if not specialty:
+            raise web.HTTPBadRequest(reason="specialty is required")
+        if not nickname:
+            nickname = f"Аноним-{secrets.randbelow(9000) + 1000}"
+        role = "student"
+    else:
+        invite_key = str(data.get("invite_key", "")).strip()
+        if not invite_key:
+            raise web.HTTPBadRequest(reason="invite_key is required")
+        expected_hash = db.get_invite_key_hash(account_type)
+        if not expected_hash or not hmac.compare_digest(_hash_invite_key(invite_key), expected_hash):
+            raise web.HTTPForbidden(reason="invalid or outdated invite key")
+        gender, course, specialty, nickname = "", "", "", ""
+        role = account_type
+
     if db.get_web_user_by_phone(phone) is not None or db.get_web_user_by_email(email) is not None:
         raise web.HTTPConflict(reason="phone or email already registered")
 
     password_hash, salt = _hash_password(password)
     db.create_web_user(first_name, last_name, phone, email, password_hash, salt, gender,
-                        course, specialty, nickname)
+                        course, specialty, nickname, role=role)
 
     code = _generate_otp()
     db.save_otp_code(email, _hash_otp(code), _otp_expiry_iso())
@@ -338,6 +368,8 @@ def _start_search(request: web.Request, user_id: int, preference: str) -> dict:
         raise web.HTTPBadRequest(reason="preference must be any, same or opposite")
     db: Database = request.app["db"]
     row = db.get_web_user(user_id)
+    if row["role"] != "student":
+        raise web.HTTPForbidden(reason="anonymous chat is for student accounts only")
     mm: WebMatchmaker = request.app["web_mm"]
     result = mm.search(user_id, row["gender"], preference)
     if result["status"] == "matched":

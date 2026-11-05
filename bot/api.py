@@ -7,6 +7,7 @@
 """
 import dataclasses
 import logging
+import secrets
 
 from aiogram import Bot
 from aiohttp import web
@@ -14,10 +15,11 @@ from aiohttp import web
 from bot.academics import register_routes as register_academics_routes
 from bot.content import Content
 from bot.db import Database
-from bot.web_chat import read_json_body, require_session
+from bot.web_chat import _hash_invite_key, read_json_body, require_session
 from bot.web_chat import register_routes as register_web_chat_routes
 
-VALID_ROLES = {"student", "teacher", "admin"}
+VALID_ROLES = {"student", "teacher", "registrar", "admin"}
+INVITE_KEY_ROLES = {"teacher", "registrar"}
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,8 @@ async def post_event_going(request: web.Request) -> web.Response:
         raise web.HTTPNotFound(reason="event not found")
 
     user_id = require_session(request)
+    if db.get_web_user(user_id)["role"] != "student":
+        raise web.HTTPForbidden(reason="only student accounts can mark events")
     data = await read_json_body(request)
     going = bool(data.get("going", True))
 
@@ -204,6 +208,25 @@ async def admin_set_role(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "email": email, "role": role})
 
 
+async def admin_rotate_invite_key(request: web.Request) -> web.Response:
+    """Генерирует новый ключ-приглашение для самостоятельной регистрации преподавателя
+    или отдела расписания — старый ключ сразу перестаёт работать. Сырой ключ отдаётся
+    только в этом ответе и нигде не хранится — потеряли, значит, рожаем новый.
+    POST /api/admin/rotate-invite-key?token=<ADMIN_TOKEN>, body {"role": "teacher"|"registrar"}."""
+    admin_token = request.app.get("admin_token")
+    if not admin_token or request.query.get("token") != admin_token:
+        raise web.HTTPUnauthorized(reason="invalid or missing token")
+    data = await read_json_body(request)
+    role = str(data.get("role", "")).strip().lower()
+    if role not in INVITE_KEY_ROLES:
+        raise web.HTTPBadRequest(reason=f"role must be one of {sorted(INVITE_KEY_ROLES)}")
+
+    key = secrets.token_urlsafe(18)
+    db: Database = request.app["db"]
+    db.set_invite_key(role, _hash_invite_key(key))
+    return web.json_response({"ok": True, "role": role, "invite_key": key})
+
+
 def build_app(db: Database, content: Content, bot: Bot | None = None,
               admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
               admin_token: str = "", brevo_api_key: str = "", brevo_sender_email: str = "",
@@ -228,6 +251,7 @@ def build_app(db: Database, content: Content, bot: Bot | None = None,
     app.router.add_get("/api/leads", get_leads)
     app.router.add_post("/api/admin/reset-web-chat", admin_reset_web_chat)
     app.router.add_post("/api/admin/set-role", admin_set_role)
+    app.router.add_post("/api/admin/rotate-invite-key", admin_rotate_invite_key)
     register_academics_routes(app)
     register_web_chat_routes(app, brevo_api_key=brevo_api_key, brevo_sender_email=brevo_sender_email,
                              brevo_sender_name=brevo_sender_name)

@@ -107,6 +107,7 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .lead input,.lead textarea{background:#0b0b0f;border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--text);font:15px Manrope;resize:vertical}
 .lead input:focus,.lead textarea:focus{outline:2px solid var(--acc);outline-offset:1px}
 .lead textarea{min-height:90px}
+#register-student-fields{display:grid;gap:12px}
 .lead .btn{justify-self:start;border:none;cursor:pointer;font:700 15px Manrope}
 .lead-status{color:var(--mute);font-size:14px;margin:0;min-height:1.2em}
 .partner-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--acc);color:var(--acc);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:700}
@@ -352,18 +353,26 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
     <p class="lead-status" id="login-status"></p>
    </form>
    <form class="lead" id="register-form" hidden>
+    <div class="gender-pick">
+     <label><input type="radio" name="account_type" value="student" checked> Студент</label>
+     <label><input type="radio" name="account_type" value="teacher"> Преподаватель</label>
+     <label><input type="radio" name="account_type" value="registrar"> Отдел расписания</label>
+    </div>
     <input name="first_name" placeholder="Имя" required maxlength="80" autocomplete="given-name">
     <input name="last_name" placeholder="Фамилия" required maxlength="80" autocomplete="family-name">
     <input name="phone" placeholder="Телефон" required autocomplete="tel">
     <input name="email" type="email" placeholder="Почта" required autocomplete="email">
     <input name="password" type="password" placeholder="Пароль (мин. 6 символов)" required minlength="6" autocomplete="new-password">
-    <input name="course" placeholder="Курс (например, 2)" required maxlength="120">
-    <input name="specialty" placeholder="Специальность" required maxlength="120">
-    <input name="nickname" placeholder="Анонимный ник (необязательно)" maxlength="40">
-    <div class="gender-pick">
-     <label><input type="radio" name="gender" value="male" required> Парень</label>
-     <label><input type="radio" name="gender" value="female" required> Девушка</label>
+    <div id="register-student-fields">
+     <input name="course" placeholder="Курс (например, 2)" maxlength="120">
+     <input name="specialty" placeholder="Специальность" maxlength="120">
+     <input name="nickname" placeholder="Анонимный ник (необязательно)" maxlength="40">
+     <div class="gender-pick">
+      <label><input type="radio" name="gender" value="male"> Парень</label>
+      <label><input type="radio" name="gender" value="female"> Девушка</label>
+     </div>
     </div>
+    <input name="invite_key" id="register-invite-key" placeholder="Ключ-приглашение от администрации" maxlength="80" hidden>
     <button class="btn" type="submit" id="register-submit-btn">Зарегистрироваться</button>
     <input name="code" id="register-code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" autocomplete="one-time-code" hidden>
     <button class="btn" type="button" id="register-verify-btn" hidden>Подтвердить почту</button>
@@ -453,6 +462,9 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 
   <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Мои оценки</h3></div></div>
   <div id="academics-grades"></div>
+
+  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Моя посещаемость</h3></div></div>
+  <div id="academics-attendance"></div>
 
   <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Мои дисциплины</h3></div></div>
   <div id="academics-my-courses"></div>
@@ -834,6 +846,21 @@ function handleLoginForm(form, statusId) {
 
 // Регистрация в два шага: 1) создать аккаунт (пароль, без токена) 2) ввести код из письма,
 // чтобы подтвердить почту и получить токен.
+// Студенческие поля (курс/специальность/пол/ник) нужны только студенту — преподавателю и
+// отделу расписания вместо них нужен ключ-приглашение, который даёт роль.
+function updateRegisterFieldsVisibility(form) {
+  const type = form.querySelector('input[name="account_type"]:checked')?.value || "student";
+  const isStudent = type === "student";
+  const studentFields = document.getElementById("register-student-fields");
+  const inviteKey = document.getElementById("register-invite-key");
+  studentFields.hidden = !isStudent;
+  inviteKey.hidden = isStudent;
+  studentFields.querySelectorAll('input[name="course"], input[name="specialty"]')
+    .forEach(el => { el.required = isStudent; });
+  studentFields.querySelectorAll('input[name="gender"]').forEach(el => { el.required = isStudent; });
+  inviteKey.required = !isStudent;
+}
+
 function initRegisterForm() {
   const form = document.getElementById("register-form");
   const status = document.getElementById("register-status");
@@ -841,6 +868,10 @@ function initRegisterForm() {
   const codeInput = document.getElementById("register-code");
   const verifyBtn = document.getElementById("register-verify-btn");
   let pendingEmail = null;
+
+  updateRegisterFieldsVisibility(form);
+  form.querySelectorAll('input[name="account_type"]').forEach(r =>
+    r.addEventListener("change", () => updateRegisterFieldsVisibility(form)));
 
   form.addEventListener("submit", async e => {
     e.preventDefault();
@@ -851,7 +882,10 @@ function initRegisterForm() {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
       });
       if (!r.ok) {
-        const reasons = {409: "Этот телефон или почта уже зарегистрированы"};
+        const reasons = {
+          409: "Этот телефон или почта уже зарегистрированы",
+          403: "Неверный или устаревший ключ-приглашение — уточните у администрации",
+        };
         status.textContent = reasons[r.status] || "Не получилось. Проверьте данные (имя, телефон, почта, пароль от 6 символов, курс, специальность).";
         return;
       }
@@ -885,6 +919,7 @@ function initRegisterForm() {
       saveChatSession(body.token, body.user);
       status.textContent = "";
       form.reset();
+      updateRegisterFieldsVisibility(form);
       submitBtn.hidden = false;
       codeInput.hidden = true;
       verifyBtn.hidden = true;
@@ -1238,6 +1273,12 @@ function fmtGrades(grades) {
     </div>`).join("");
 }
 
+function fmtAttendance(stats) {
+  if (!stats.total) return "";
+  const retake = stats.on_retake ? ` <span class="grade-pill" style="border-color:#ff5c7a;color:#ff5c7a">РЕТЕЙК</span>` : "";
+  return `<p class="meta">Пропущено ${stats.absent} из ${stats.total} (${Math.round(stats.ratio * 100)}%)${retake}</p>`;
+}
+
 async function loadAcademicsOverview() {
   try {
     const [scheduleR, gradesR, myR, allR] = await Promise.all([
@@ -1260,11 +1301,41 @@ async function loadAcademicsOverview() {
       : `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
 
     document.getElementById("academics-all-courses").innerHTML = allCourses.length
-      ? allCourses.map(c => `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
+      ? allCourses.map(c => `<div class="course-card" data-course-id="${c.id}"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
           ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
           <div class="actions">${myIds.has(c.id) ? `<span class="grade-pill">Уже записан(а)</span>`
             : `<button type="button" class="btn sm" data-enroll="${c.id}">Записаться</button>`}</div></div>`).join("")
       : `<div class="empty">Дисциплин пока нет.</div>`;
+
+    if (myCourses.length) {
+      const cards = await Promise.all(myCourses.map(async c => {
+        const r = await chatFetch(`/api/academics/attendance?course_id=${c.id}`);
+        const {stats} = await r.json();
+        if (!stats.total) return "";
+        return `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>${fmtAttendance(stats)}</div>`;
+      }));
+      const html = cards.join("");
+      document.getElementById("academics-attendance").innerHTML = html || `<div class="empty">Посещаемость пока не отмечена.</div>`;
+    } else {
+      document.getElementById("academics-attendance").innerHTML = `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
+    }
+  } catch {}
+}
+
+// Если у дисциплины несколько вариантов расписания — сначала выбор, иначе сразу запись.
+async function startEnroll(courseId, card) {
+  try {
+    const r = await chatFetch(`/api/academics/courses/${courseId}/options`);
+    const options = (await r.json()).schedule;
+    if (options.length <= 1) {
+      await chatFetch("/api/academics/enroll", {method: "POST", body: JSON.stringify({course_id: courseId})});
+      loadAcademicsOverview();
+      return;
+    }
+    card.querySelector(".actions").innerHTML = `<form class="mini-form" data-enroll-choice="${courseId}">
+      <select name="schedule_item_id">${options.map(o => `<option value="${o.id}">${WEEKDAY_NAMES[o.day_of_week]}, ${esc(o.start_time)}–${esc(o.end_time)}${o.room ? " · ауд. " + esc(o.room) : ""}</option>`).join("")}</select>
+      <button class="btn sm" type="submit">Записаться</button>
+    </form>`;
   } catch {}
 }
 
@@ -1282,7 +1353,11 @@ function renderTeachingCourse(c, roster, schedule) {
   const scheduleHtml = schedule.length
     ? schedule.map(i => `<div class="people-row"><span>${WEEKDAY_NAMES[i.day_of_week]}, ${esc(i.start_time)}–${esc(i.end_time)}
         ${i.room ? ` · ауд. ${esc(i.room)}` : ""} · ${esc(i.kind)}</span>
-        <button type="button" class="btn ghost sm" data-delete-schedule="${i.id}">Удалить</button></div>`).join("")
+        <span class="actions" style="margin:0">
+          <button type="button" class="btn ghost sm" data-show-attendance="${i.id}">Посещаемость</button>
+          <button type="button" class="btn ghost sm" data-delete-schedule="${i.id}">Удалить</button>
+        </span></div>
+        <div class="attendance-box" id="attendance-box-${i.id}" hidden></div>`).join("")
     : `<div class="empty">Расписания пока нет.</div>`;
 
   return `<div class="course-card" data-course-id="${c.id}">
@@ -1301,6 +1376,41 @@ function renderTeachingCourse(c, roster, schedule) {
     <p class="meta" style="margin-top:14px;margin-bottom:4px">Студенты (${roster.length})</p>
     ${rosterHtml}
   </div>`;
+}
+
+function renderAttendanceBox(students) {
+  if (!students.length) return `<div class="empty">Никто не выбрал этот вариант расписания.</div>`;
+  return students.map(s => {
+    const st = s.stats;
+    const badge = st.total
+      ? `<small>${st.absent}/${st.total} пропусков (${Math.round(st.ratio * 100)}%)${st.on_retake ? " · РЕТЕЙК" : ""}</small>` : "";
+    return `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}${badge}</span></div>
+      <form class="mini-form" data-mark-attendance="${s.id}">
+        <input type="date" name="class_date" required style="width:150px">
+        <select name="present"><option value="1">Был(а)</option><option value="0">Не был(а)</option></select>
+        <button class="btn sm" type="submit">Отметить</button>
+      </form>
+      <form class="mini-form" data-delete-attendance="${s.id}">
+        <input type="date" name="class_date" required style="width:150px">
+        <button class="btn ghost sm" type="submit">Удалить отметку за эту дату</button>
+      </form>`;
+  }).join("");
+}
+
+async function loadAttendanceBox(itemId, box) {
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const r = await chatFetch(`/api/academics/schedule-items/${itemId}/attendance`);
+    box.innerHTML = renderAttendanceBox((await r.json()).students);
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+function toggleAttendanceBox(itemId, box) {
+  if (!box.hidden) { box.hidden = true; return; }
+  loadAttendanceBox(itemId, box);
 }
 
 async function loadTeaching() {
@@ -1342,8 +1452,7 @@ function initAcademics() {
   document.addEventListener("click", e => {
     const enrollBtn = e.target.closest("[data-enroll]");
     if (enrollBtn) {
-      chatFetch("/api/academics/enroll", {method: "POST", body: JSON.stringify({course_id: Number(enrollBtn.dataset.enroll)})})
-        .then(loadAcademicsOverview).catch(() => {});
+      startEnroll(Number(enrollBtn.dataset.enroll), enrollBtn.closest(".course-card"));
       return;
     }
     const unenrollBtn = e.target.closest("[data-unenroll]");
@@ -1356,10 +1465,25 @@ function initAcademics() {
     if (delBtn) {
       chatFetch("/api/academics/schedule/delete", {method: "POST", body: JSON.stringify({item_id: Number(delBtn.dataset.deleteSchedule)})})
         .then(loadTeaching).catch(() => {});
+      return;
+    }
+    const attBtn = e.target.closest("[data-show-attendance]");
+    if (attBtn) {
+      const itemId = Number(attBtn.dataset.showAttendance);
+      toggleAttendanceBox(itemId, document.getElementById(`attendance-box-${itemId}`));
     }
   });
 
   document.addEventListener("submit", e => {
+    const enrollChoiceForm = e.target.closest("[data-enroll-choice]");
+    if (enrollChoiceForm) {
+      e.preventDefault();
+      const courseId = Number(enrollChoiceForm.dataset.enrollChoice);
+      const scheduleItemId = Number(new FormData(enrollChoiceForm).get("schedule_item_id"));
+      chatFetch("/api/academics/enroll", {method: "POST", body: JSON.stringify({course_id: courseId, schedule_item_id: scheduleItemId})})
+        .then(loadAcademicsOverview).catch(() => {});
+      return;
+    }
     const addForm = e.target.closest("[data-add-schedule]");
     if (addForm) {
       e.preventDefault();
@@ -1379,6 +1503,31 @@ function initAcademics() {
       data.max_score = Number(data.max_score || 100);
       chatFetch("/api/academics/grades/set", {method: "POST", body: JSON.stringify(data)})
         .then(() => { gradeForm.reset(); loadAcademicsOverview(); }).catch(() => {});
+      return;
+    }
+    const markForm = e.target.closest("[data-mark-attendance]");
+    if (markForm) {
+      e.preventDefault();
+      const box = markForm.closest(".attendance-box");
+      const itemId = Number(box.id.replace("attendance-box-", ""));
+      const fd = new FormData(markForm);
+      const body = {schedule_item_id: itemId, user_id: Number(markForm.dataset.markAttendance),
+        class_date: fd.get("class_date"), present: fd.get("present") === "1"};
+      chatFetch("/api/academics/attendance/mark", {method: "POST", body: JSON.stringify(body)}).then(r => {
+        if (r.status === 409) alert("Студент уже на ретейке (больше 30% пропусков) — новую отметку поставить нельзя.");
+        loadAttendanceBox(itemId, box);
+      }).catch(() => {});
+      return;
+    }
+    const delAttForm = e.target.closest("[data-delete-attendance]");
+    if (delAttForm) {
+      e.preventDefault();
+      const box = delAttForm.closest(".attendance-box");
+      const itemId = Number(box.id.replace("attendance-box-", ""));
+      const fd = new FormData(delAttForm);
+      const body = {schedule_item_id: itemId, user_id: Number(delAttForm.dataset.deleteAttendance), class_date: fd.get("class_date")};
+      chatFetch("/api/academics/attendance/delete", {method: "POST", body: JSON.stringify(body)})
+        .then(() => loadAttendanceBox(itemId, box)).catch(() => {});
     }
   });
 }

@@ -104,9 +104,10 @@ CREATE TABLE IF NOT EXISTS courses (
     created_at  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS enrollments (
-    user_id     INTEGER NOT NULL,
-    course_id   INTEGER NOT NULL,
-    created_at  TEXT NOT NULL,
+    user_id           INTEGER NOT NULL,
+    course_id         INTEGER NOT NULL,
+    schedule_item_id  INTEGER,  -- выбранный студентом вариант расписания (если у дисциплины их несколько)
+    created_at        TEXT NOT NULL,
     PRIMARY KEY (user_id, course_id)
 );
 CREATE TABLE IF NOT EXISTS schedule_items (
@@ -117,6 +118,7 @@ CREATE TABLE IF NOT EXISTS schedule_items (
     end_time    TEXT NOT NULL,            -- "HH:MM"
     room        TEXT NOT NULL DEFAULT '',
     kind        TEXT NOT NULL DEFAULT 'лекция',  -- 'лекция' | 'практика' | 'лаб' | ...
+    teacher_id  INTEGER,                  -- переопределяет courses.teacher_id для этого конкретного варианта
     created_at  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS grades (
@@ -129,11 +131,31 @@ CREATE TABLE IF NOT EXISTS grades (
     comment     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS attendance (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    schedule_item_id  INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    class_date        TEXT NOT NULL,      -- "YYYY-MM-DD" — конкретная дата пары
+    present           INTEGER NOT NULL,   -- 1 = был(а), 0 = отсутствовал(а)
+    marked_by         INTEGER NOT NULL,
+    created_at        TEXT NOT NULL,
+    UNIQUE(schedule_item_id, user_id, class_date)
+);
+CREATE TABLE IF NOT EXISTS staff_invite_keys (
+    role        TEXT PRIMARY KEY,   -- 'teacher' | 'registrar'
+    key_hash    TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
 """
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class AttendanceLocked(Exception):
+    """Студент уже на автоматическом ретейке (>30% пропусков) — новую отметку посещаемости
+    поставить нельзя, можно только править уже существующие записи."""
 
 
 @dataclass
@@ -176,6 +198,12 @@ class Database:
             },
             "web_dialogs": {
                 "mode": "ALTER TABLE web_dialogs ADD COLUMN mode TEXT NOT NULL DEFAULT 'anonymous'",
+            },
+            "enrollments": {
+                "schedule_item_id": "ALTER TABLE enrollments ADD COLUMN schedule_item_id INTEGER",
+            },
+            "schedule_items": {
+                "teacher_id": "ALTER TABLE schedule_items ADD COLUMN teacher_id INTEGER",
             },
         }
         with self.conn:
@@ -312,14 +340,14 @@ class Database:
 
     def create_web_user(self, first_name: str, last_name: str, phone: str, email: str,
                          password_hash: str, password_salt: str, gender: str,
-                         course: str, specialty: str, nickname: str) -> int:
+                         course: str, specialty: str, nickname: str, role: str = "student") -> int:
         with self.conn:
             cur = self.conn.execute(
                 """INSERT INTO web_users (first_name, last_name, phone, email, password_hash, password_salt,
-                                          gender, course, specialty, nickname, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                          gender, course, specialty, nickname, role, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (first_name, last_name, phone, email, password_hash, password_salt, gender,
-                 course, specialty, nickname, _now()),
+                 course, specialty, nickname, role, _now()),
             )
         return cur.lastrowid
 
@@ -477,11 +505,19 @@ class Database:
     def courses_taught_by(self, teacher_id: int) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM courses WHERE teacher_id = ? ORDER BY code", (teacher_id,)).fetchall()
 
-    def enroll(self, user_id: int, course_id: int) -> None:
+    def enroll(self, user_id: int, course_id: int, schedule_item_id: int | None = None) -> None:
+        """Если у дисциплины ровно один вариант расписания, выбираем его автоматически.
+        Если вариантов несколько, schedule_item_id обязателен — вызывающий код должен
+        это проверить (см. academics.enroll) и явно передать выбор студента."""
+        if schedule_item_id is None:
+            items = self.schedule_for_course(course_id)
+            if len(items) == 1:
+                schedule_item_id = items[0]["id"]
         with self.conn:
             self.conn.execute(
-                "INSERT OR IGNORE INTO enrollments (user_id, course_id, created_at) VALUES (?, ?, ?)",
-                (user_id, course_id, _now()),
+                """INSERT INTO enrollments (user_id, course_id, schedule_item_id, created_at) VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_id, course_id) DO NOTHING""",
+                (user_id, course_id, schedule_item_id, _now()),
             )
 
     def unenroll(self, user_id: int, course_id: int) -> None:
@@ -494,6 +530,21 @@ class Database:
         ).fetchone()
         return row is not None
 
+    def get_enrollment(self, user_id: int, course_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM enrollments WHERE user_id = ? AND course_id = ?", (user_id, course_id)
+        ).fetchone()
+
+    def set_enrollment_schedule(self, user_id: int, course_id: int, schedule_item_id: int) -> bool:
+        """Меняет выбранный студентом вариант расписания — сам студент (из открытых
+        вариантов своей дисциплины) или отдел расписания (registrar/admin) за него."""
+        with self.conn:
+            cur = self.conn.execute(
+                "UPDATE enrollments SET schedule_item_id = ? WHERE user_id = ? AND course_id = ?",
+                (schedule_item_id, user_id, course_id),
+            )
+        return cur.rowcount > 0
+
     def courses_for_student(self, user_id: int) -> list[sqlite3.Row]:
         return self.conn.execute(
             """SELECT c.* FROM courses c JOIN enrollments e ON e.course_id = c.id
@@ -502,26 +553,56 @@ class Database:
         ).fetchall()
 
     def roster(self, course_id: int) -> list[sqlite3.Row]:
-        """Студенты, записанные на дисциплину — для преподавателя/админа."""
+        """Студенты, записанные на дисциплину, вместе с их выбранным вариантом расписания —
+        для преподавателя/админа/отдела расписания."""
         return self.conn.execute(
-            """SELECT u.* FROM web_users u JOIN enrollments e ON e.user_id = u.id
+            """SELECT u.*, e.schedule_item_id AS enrollment_schedule_item_id FROM web_users u
+               JOIN enrollments e ON e.user_id = u.id
                WHERE e.course_id = ? ORDER BY u.first_name, u.last_name""",
             (course_id,),
         ).fetchall()
 
+    def roster_for_schedule_item(self, schedule_item_id: int) -> list[sqlite3.Row]:
+        """Студенты, выбравшие именно этот вариант расписания — те, кого реально
+        отмечает на посещаемости преподаватель этого варианта."""
+        return self.conn.execute(
+            """SELECT u.* FROM web_users u JOIN enrollments e ON e.user_id = u.id
+               WHERE e.schedule_item_id = ? ORDER BY u.first_name, u.last_name""",
+            (schedule_item_id,),
+        ).fetchall()
+
     def add_schedule_item(self, course_id: int, day_of_week: int, start_time: str, end_time: str,
-                           room: str = "", kind: str = "лекция") -> int:
+                           room: str = "", kind: str = "лекция", teacher_id: int | None = None) -> int:
+        """Если это первый (единственный) вариант расписания у дисциплины, сразу
+        подставляем его всем, кто уже записался раньше — им выбирать не из чего, незачем
+        заставлять их заходить и подтверждать то единственное, что есть."""
         with self.conn:
             cur = self.conn.execute(
-                """INSERT INTO schedule_items (course_id, day_of_week, start_time, end_time, room, kind, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (course_id, day_of_week, start_time, end_time, room, kind, _now()),
+                """INSERT INTO schedule_items (course_id, day_of_week, start_time, end_time, room, kind,
+                                               teacher_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (course_id, day_of_week, start_time, end_time, room, kind, teacher_id, _now()),
             )
-        return cur.lastrowid
+            item_id = cur.lastrowid
+            still_only_one = self.conn.execute(
+                "SELECT COUNT(*) FROM schedule_items WHERE course_id = ?", (course_id,)
+            ).fetchone()[0] == 1
+            if still_only_one:
+                self.conn.execute(
+                    "UPDATE enrollments SET schedule_item_id = ? WHERE course_id = ? AND schedule_item_id IS NULL",
+                    (item_id, course_id),
+                )
+        return item_id
+
+    def set_schedule_item_teacher(self, item_id: int, teacher_id: int | None) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE schedule_items SET teacher_id = ? WHERE id = ?", (teacher_id, item_id))
 
     def delete_schedule_item(self, item_id: int) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM schedule_items WHERE id = ?", (item_id,))
+            # у кого этот вариант был выбран — выбор сбрасывается, не оставляем битую ссылку
+            self.conn.execute("UPDATE enrollments SET schedule_item_id = NULL WHERE schedule_item_id = ?", (item_id,))
 
     def get_schedule_item(self, item_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM schedule_items WHERE id = ?", (item_id,)).fetchone()
@@ -532,10 +613,11 @@ class Database:
         ).fetchall()
 
     def schedule_for_student(self, user_id: int) -> list[sqlite3.Row]:
+        """Только выбранный студентом вариант по каждой дисциплине — не все варианты сразу."""
         return self.conn.execute(
-            """SELECT s.*, c.code AS course_code, c.title AS course_title FROM schedule_items s
-               JOIN courses c ON c.id = s.course_id
-               JOIN enrollments e ON e.course_id = c.id
+            """SELECT s.*, c.code AS course_code, c.title AS course_title FROM enrollments e
+               JOIN schedule_items s ON s.id = e.schedule_item_id
+               JOIN courses c ON c.id = e.course_id
                WHERE e.user_id = ? ORDER BY s.day_of_week, s.start_time""",
             (user_id,),
         ).fetchall()
@@ -580,6 +662,71 @@ class Database:
         return self.conn.execute(
             "SELECT * FROM grades WHERE course_id = ? ORDER BY user_id, created_at", (course_id,)
         ).fetchall()
+
+    # ---------- посещаемость и автоматический ретейк ----------
+
+    RETAKE_ABSENCE_RATIO = 0.30  # больше 30% пропусков — автоматический ретейк
+
+    def attendance_stats(self, schedule_item_id: int, user_id: int) -> dict:
+        row = self.conn.execute(
+            """SELECT COUNT(*) AS total, SUM(CASE WHEN present = 0 THEN 1 ELSE 0 END) AS absent
+               FROM attendance WHERE schedule_item_id = ? AND user_id = ?""",
+            (schedule_item_id, user_id),
+        ).fetchone()
+        total = row["total"] or 0
+        absent = row["absent"] or 0
+        ratio = (absent / total) if total else 0.0
+        return {"total": total, "absent": absent, "ratio": ratio,
+                "on_retake": total > 0 and ratio > self.RETAKE_ABSENCE_RATIO}
+
+    def set_attendance(self, schedule_item_id: int, user_id: int, class_date: str,
+                        present: bool, marked_by: int) -> None:
+        """Отмечает присутствие/отсутствие на конкретную дату. Правка уже существующей
+        отметки (в том числе за прошлые недели) разрешена всегда — так преподаватель
+        может снять или добавить пропуск задним числом. А вот НОВУЮ отметку поставить
+        нельзя, если студент уже на ретейке (>30% пропусков) по этому варианту расписания —
+        это и значит «больше его отметить нельзя»."""
+        existing = self.conn.execute(
+            "SELECT id FROM attendance WHERE schedule_item_id = ? AND user_id = ? AND class_date = ?",
+            (schedule_item_id, user_id, class_date),
+        ).fetchone()
+        if existing is None and self.attendance_stats(schedule_item_id, user_id)["on_retake"]:
+            raise AttendanceLocked("student is on retake — no new attendance marks allowed")
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO attendance (schedule_item_id, user_id, class_date, present, marked_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(schedule_item_id, user_id, class_date)
+                   DO UPDATE SET present = excluded.present, marked_by = excluded.marked_by""",
+                (schedule_item_id, user_id, class_date, int(present), marked_by, _now()),
+            )
+
+    def delete_attendance(self, schedule_item_id: int, user_id: int, class_date: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM attendance WHERE schedule_item_id = ? AND user_id = ? AND class_date = ?",
+                (schedule_item_id, user_id, class_date),
+            )
+
+    def attendance_for_student(self, schedule_item_id: int, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM attendance WHERE schedule_item_id = ? AND user_id = ? ORDER BY class_date",
+            (schedule_item_id, user_id),
+        ).fetchall()
+
+    # ---------- ключи-приглашения для регистрации преподавателей и отдела расписания ----------
+
+    def set_invite_key(self, role: str, key_hash: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO staff_invite_keys (role, key_hash, created_at) VALUES (?, ?, ?)
+                   ON CONFLICT(role) DO UPDATE SET key_hash = excluded.key_hash, created_at = excluded.created_at""",
+                (role, key_hash, _now()),
+            )
+
+    def get_invite_key_hash(self, role: str) -> str | None:
+        row = self.conn.execute("SELECT key_hash FROM staff_invite_keys WHERE role = ?", (role,)).fetchone()
+        return row["key_hash"] if row else None
 
     # ---------- обслуживание ----------
 

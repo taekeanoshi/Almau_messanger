@@ -126,7 +126,7 @@ python -m bot.main
 | POST | `/api/leads` | сохраняет заявку с формы сайта (`name`, `contact`, `message`, опц. `event_id`) в БД |
 | GET | `/api/leads?token=<ADMIN_TOKEN>` | просмотр последних заявок без бота (401 без правильного токена) |
 | POST | `/api/admin/reset-web-chat?token=<ADMIN_TOKEN>&confirm=yes` | **необратимо** стирает все аккаунты/диалоги/сообщения/фото «Анонимного чата» — для очистки тестовых данных перед демо |
-| POST | `/api/chat/register` | аккаунт в «Анонимном чате»: `first_name`, `last_name`, `phone`, `email`, `password`, `gender`, `course`, `specialty`, опц. `nickname` — сразу шлёт код подтверждения на почту |
+| POST | `/api/chat/register` | аккаунт: `first_name`, `last_name`, `phone`, `email`, `password`, опц. `account_type` (`student` по умолчанию, `teacher`, `registrar`). Для `student` ещё нужны `gender`, `course`, `specialty`, опц. `nickname`. Для `teacher`/`registrar` вместо них — `invite_key` (см. `/api/admin/rotate-invite-key`), иначе 403. Всегда шлёт код подтверждения на почту |
 | POST | `/api/chat/login` | `{"email", "password"}` — вход по паролю (нужна подтверждённая почта), выдаёт токен сессии |
 | POST | `/api/chat/otp/request` | `{"email"}` — повторно шлёт 6-значный код на почту, действует 10 минут |
 | POST | `/api/chat/otp/verify` | `{"email", "code"}` — подтверждает почту кодом (один раз, после регистрации), выдаёт токен сессии |
@@ -144,20 +144,29 @@ python -m bot.main
 | GET | `/api/chat/direct/list` | список прямых диалогов текущего пользователя с данными собеседников |
 | GET | `/api/chat/direct/poll?dialog_id=<id>&since=<id>` | новые сообщения в прямом диалоге — только для его участников |
 | POST | `/api/chat/direct/send` | `{"dialog_id", "text"}` — отправить сообщение в прямом диалоге |
-| POST | `/api/admin/set-role?token=<ADMIN_TOKEN>` | `{"email", "role"}` (`student`\|`teacher`\|`admin`) — выдаёт роль аккаунту по почте, без этого UI для управления ролями нет |
+| POST | `/api/admin/set-role?token=<ADMIN_TOKEN>` | `{"email", "role"}` (`student`\|`teacher`\|`registrar`\|`admin`) — выдаёт роль аккаунту по почте вручную |
+| POST | `/api/admin/rotate-invite-key?token=<ADMIN_TOKEN>` | `{"role": "teacher"\|"registrar"}` — перевыпускает ключ-приглашение для самостоятельной регистрации сотрудника; старый ключ сразу перестаёт работать, новый отдаётся только в этом ответе |
 | GET | `/api/academics/courses` | список всех дисциплин |
 | GET | `/api/academics/my-courses` | дисциплины, на которые записан текущий пользователь |
-| POST | `/api/academics/enroll` / `/api/academics/unenroll` | `{"course_id"}` — записаться/отписаться от дисциплины |
-| GET | `/api/academics/schedule` | личное расписание — только по дисциплинам, на которые записан |
+| POST | `/api/academics/enroll` | `{"course_id", опц. "schedule_item_id"}` — записаться; если у дисциплины несколько вариантов расписания, `schedule_item_id` обязателен |
+| POST | `/api/academics/unenroll` | `{"course_id"}` — отписаться |
+| GET | `/api/academics/courses/{id}/options` | варианты расписания дисциплины — виден любому вошедшему, чтобы выбрать при записи |
+| POST | `/api/academics/schedule/choose` | `{"course_id", "schedule_item_id", опц. "user_id"}` — выбрать/сменить вариант расписания; без `user_id` — для себя, с `user_id` — только `registrar`/`admin` (перевести студента на другой день) |
+| GET | `/api/academics/schedule` | личное расписание — только выбранный вариант по каждой записанной дисциплине |
 | GET | `/api/academics/grades` | личные оценки по всем дисциплинам |
-| GET | `/api/academics/teaching` | дисциплины, которые ведёт текущий (`teacher`/`admin`) аккаунт — 403 студентам |
+| GET | `/api/academics/attendance?course_id=<id>` | своя посещаемость и статистика (включая флаг ретейка) по одной дисциплине |
+| GET | `/api/academics/teaching` | дисциплины, которые ведёт текущий (`teacher`/`admin`) аккаунт — 403 студентам и `registrar` |
 | POST | `/api/academics/courses` | `{"code", "title", "description"}` — создать дисциплину (только `teacher`/`admin`) |
-| GET | `/api/academics/courses/{id}/roster` | список записанных студентов — только преподаватель этой дисциплины или админ |
-| GET | `/api/academics/courses/{id}/schedule` | расписание дисциплины — для её преподавателя/админа |
-| POST | `/api/academics/schedule` | `{"course_id", "day_of_week" (0=Пн), "start_time", "end_time", опц. "room", "kind"}` — добавить пару в расписание |
-| POST | `/api/academics/schedule/delete` | `{"item_id"}` — удалить пару из расписания |
-| POST | `/api/academics/grades/set` | `{"course_id", "user_id", "label", "score", опц. "max_score", "comment"}` — выставить/обновить оценку (студент должен быть записан) |
-| GET | `/api/academics/courses/{id}/grades` | полная ведомость по дисциплине — для её преподавателя/админа |
+| GET | `/api/academics/courses/{id}/roster` | список записанных студентов с их выбором расписания — преподаватель дисциплины, `registrar` или админ |
+| GET | `/api/academics/courses/{id}/schedule` | расписание дисциплины (для управления) — преподаватель дисциплины, `registrar` или админ |
+| POST | `/api/academics/schedule` | `{"course_id", "day_of_week" (0=Пн), "start_time", "end_time", опц. "room", "kind", "teacher_id"}` — добавить вариант расписания; доступно преподавателю дисциплины, `registrar` или админу |
+| POST | `/api/academics/schedule/set-teacher` | `{"item_id", "teacher_id"}` — переназначить, кто ведёт конкретный вариант расписания (только `registrar`/`admin`, не сам преподаватель) |
+| POST | `/api/academics/schedule/delete` | `{"item_id"}` — удалить вариант расписания |
+| POST | `/api/academics/grades/set` | `{"course_id", "user_id", "label", "score", опц. "max_score", "comment"}` — выставить/обновить оценку (только преподаватель этой дисциплины/админ, студент должен быть записан) |
+| GET | `/api/academics/courses/{id}/grades` | полная ведомость по дисциплине — преподаватель дисциплины/админ |
+| POST | `/api/academics/attendance/mark` | `{"schedule_item_id", "user_id", "class_date" ("YYYY-MM-DD"), "present"}` — отметить присутствие/отсутствие; только преподаватель этого варианта расписания/админ. Новую отметку нельзя поставить, если у студента уже больше 30% пропусков (`409`) — но уже существующую отметку (в т.ч. за прошлые недели) можно поправить всегда |
+| POST | `/api/academics/attendance/delete` | `{"schedule_item_id", "user_id", "class_date"}` — снять отметку за дату (тоже работает за прошлые недели) |
+| GET | `/api/academics/schedule-items/{id}/attendance` | список студентов этого варианта расписания с их посещаемостью и статусом ретейка — для преподавателя варианта/админа |
 
 Проверить локально после `python -m bot.api_server`:
 
