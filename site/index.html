@@ -1365,6 +1365,138 @@ async function loadMyLessons(courseId) {
   }
 }
 
+// ---------- Проктор-экзамены: подсчёт выходов за пределы окна + необязательная запись экрана ----------
+const examSessions = {};
+
+function renderExamCard(ex, attempt) {
+  const summary = attempt
+    ? `<p class="meta">Результат: ${attempt.correct_count}/${attempt.total_count} (${Math.round(attempt.score)}%) · выходов за экран: ${attempt.tab_exit_count}${attempt.has_recording ? " · запись сохранена" : ""}</p>`
+    : "";
+  return `<div class="course-card" style="margin-top:8px" data-exam-id="${ex.id}"
+      data-require-recording="${ex.require_recording ? 1 : 0}" data-time-limit="${ex.time_limit_minutes || ""}">
+    <h4 style="font-size:15px">${esc(ex.title)}</h4>
+    ${ex.description ? `<p class="meta">${esc(ex.description)}</p>` : ""}
+    ${ex.time_limit_minutes ? `<p class="meta">Лимит времени: ${ex.time_limit_minutes} мин</p>` : ""}
+    ${ex.require_recording ? `<p class="meta">⚠️ Для сдачи нужно разрешить запись экрана браузеру.</p>` : ""}
+    ${summary}
+    <div class="exam-runner" id="exam-runner-${ex.id}"></div>
+    <button type="button" class="btn sm" data-start-exam="${ex.id}">${attempt ? "Пересдать" : "Начать экзамен"}</button>
+  </div>`;
+}
+
+async function loadMyExams(courseId) {
+  const box = document.getElementById(`my-exams-${courseId}`);
+  if (!box) return;
+  try {
+    const r = await chatFetch(`/api/academics/courses/${courseId}/exams`);
+    const exams = (await r.json()).exams;
+    if (!exams.length) { box.innerHTML = `<div class="empty">Экзаменов пока нет.</div>`; return; }
+    const parts = await Promise.all(exams.map(async ex => {
+      const attemptR = await chatFetch(`/api/academics/exams/my-attempt?exam_id=${ex.id}`);
+      return renderExamCard(ex, (await attemptR.json()).attempt);
+    }));
+    box.innerHTML = parts.join("");
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+// Запись идёт через собственный диалог разрешения браузера (getDisplayMedia) — без явного
+// согласия студента запись просто не начнётся, так что экзамен с require_recording нельзя
+// начать тайком. Подсчёт выходов — через потерю фокуса окна/вкладки, пока экзамен активен.
+async function startExam(examId, card) {
+  const requireRecording = card.dataset.requireRecording === "1";
+  const timeLimit = Number(card.dataset.timeLimit) || 0;
+
+  let stream = null, recorder = null;
+  const chunks = [];
+  if (requireRecording) {
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({video: true});
+    } catch {
+      alert("Для этого экзамена нужно разрешить запись экрана — без неё начать нельзя.");
+      return;
+    }
+    try {
+      recorder = new MediaRecorder(stream, {mimeType: "video/webm"});
+      recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      recorder.start();
+    } catch {
+      alert("Этот браузер не поддерживает запись экрана.");
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+  }
+
+  const session = {stream, recorder, chunks, tabExitCount: 0};
+  session.blurHandler = () => { session.tabExitCount++; };
+  session.visHandler = () => { if (document.hidden) session.tabExitCount++; };
+  window.addEventListener("blur", session.blurHandler);
+  document.addEventListener("visibilitychange", session.visHandler);
+  examSessions[examId] = session;
+
+  let questions;
+  try {
+    const r = await chatFetch(`/api/academics/exams/${examId}/questions`);
+    questions = (await r.json()).questions;
+  } catch {
+    alert("Не получилось загрузить вопросы.");
+    return;
+  }
+
+  const runner = document.getElementById(`exam-runner-${examId}`);
+  const timerHtml = timeLimit ? `<p class="meta" id="exam-timer-${examId}">Осталось: ${timeLimit}:00</p>` : "";
+  runner.innerHTML = `${timerHtml}
+    <form class="mini-form" data-submit-exam="${examId}" style="align-items:flex-start">
+      ${questions.map((q, i) => `<div style="width:100%">
+        <p class="meta">${esc(q.text)}</p>
+        ${q.options.map((o, oi) => `<label style="display:block;margin:2px 0;font-size:14px"><input type="radio" name="q${i}" value="${oi}" required> ${esc(o)}</label>`).join("")}
+      </div>`).join("")}
+      <button class="btn sm" type="submit">Сдать экзамен</button>
+    </form>`;
+  card.querySelector("[data-start-exam]").hidden = true;
+
+  if (timeLimit) {
+    session.deadline = Date.now() + timeLimit * 60000;
+    session.timerInterval = setInterval(() => {
+      const msLeft = session.deadline - Date.now();
+      const timerEl = document.getElementById(`exam-timer-${examId}`);
+      if (msLeft <= 0) {
+        clearInterval(session.timerInterval);
+        if (timerEl) timerEl.textContent = "Время вышло — сдаём автоматически…";
+        const form = runner.querySelector(`[data-submit-exam="${examId}"]`);
+        form?.requestSubmit();
+        return;
+      }
+      if (timerEl) {
+        const mins = Math.floor(msLeft / 60000), secs = Math.floor((msLeft % 60000) / 1000);
+        timerEl.textContent = `Осталось: ${mins}:${String(secs).padStart(2, "0")}`;
+      }
+    }, 1000);
+  }
+}
+
+async function finishExamSession(examId) {
+  const session = examSessions[examId];
+  if (!session) return {tab_exit_count: 0, recording: null};
+  window.removeEventListener("blur", session.blurHandler);
+  document.removeEventListener("visibilitychange", session.visHandler);
+  if (session.timerInterval) clearInterval(session.timerInterval);
+
+  let recording = null;
+  if (session.recorder && session.recorder.state !== "inactive") {
+    await new Promise(resolve => { session.recorder.onstop = resolve; session.recorder.stop(); });
+  }
+  if (session.stream) session.stream.getTracks().forEach(t => t.stop());
+  if (session.chunks.length) {
+    const blob = new Blob(session.chunks, {type: "video/webm"});
+    recording = {filename: "recording.webm", content_type: "video/webm", data: await readFileAsBase64(blob)};
+  }
+  const tabExitCount = session.tabExitCount;
+  delete examSessions[examId];
+  return {tab_exit_count: tabExitCount, recording};
+}
+
 async function loadAcademicsOverview() {
   try {
     const [scheduleR, gradesR, myR, allR] = await Promise.all([
@@ -1389,8 +1521,10 @@ async function loadAcademicsOverview() {
           <div class="my-assignments-box" id="my-assignments-${c.id}"><div class="empty">Загрузка…</div></div>
           <p class="meta" style="margin-top:14px;margin-bottom:4px">Видеоуроки</p>
           <div class="my-lessons-box" id="my-lessons-${c.id}"><div class="empty">Загрузка…</div></div>
+          <p class="meta" style="margin-top:14px;margin-bottom:4px">Экзамены</p>
+          <div class="my-exams-box" id="my-exams-${c.id}"><div class="empty">Загрузка…</div></div>
         </div>`).join("");
-      myCourses.forEach(c => { loadMyAssignments(c.id); loadMyLessons(c.id); });
+      myCourses.forEach(c => { loadMyAssignments(c.id); loadMyLessons(c.id); loadMyExams(c.id); });
     } else {
       myCoursesBox.innerHTML = `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
     }
@@ -1434,7 +1568,7 @@ async function startEnroll(courseId, card) {
   } catch {}
 }
 
-function renderTeachingCourse(c, roster, schedule, assignments, lessons) {
+function renderTeachingCourse(c, roster, schedule, assignments, lessons, exams) {
   const rosterHtml = roster.length
     ? roster.map(s => `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}</span>
         <form class="mini-form" data-set-grade="${c.id}" data-student="${s.id}">
@@ -1475,6 +1609,17 @@ function renderTeachingCourse(c, roster, schedule, assignments, lessons) {
         <div class="attempts-box" id="attempts-box-${l.id}" hidden></div>`).join("")
     : `<div class="empty">Видеоуроков пока нет.</div>`;
 
+  const examsHtml = exams.length
+    ? exams.map(ex => `<div class="people-row"><span>${esc(ex.title)}${ex.time_limit_minutes ? ` · ${ex.time_limit_minutes} мин` : ""}${ex.require_recording ? " · 🎥 запись обязательна" : ""}</span>
+        <span class="actions" style="margin:0">
+          <button type="button" class="btn ghost sm" data-show-exam-editor="${ex.id}">Вопросы</button>
+          <button type="button" class="btn ghost sm" data-show-exam-attempts="${ex.id}">Результаты</button>
+          <button type="button" class="btn ghost sm" data-delete-exam="${ex.id}">Удалить</button>
+        </span></div>
+        <div class="exam-editor-box" id="exam-editor-${ex.id}" hidden></div>
+        <div class="exam-attempts-box" id="exam-attempts-${ex.id}" hidden></div>`).join("")
+    : `<div class="empty">Экзаменов пока нет.</div>`;
+
   return `<div class="course-card" data-course-id="${c.id}">
     <h4>${esc(c.code)} — ${esc(c.title)}</h4>
     ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
@@ -1509,6 +1654,16 @@ function renderTeachingCourse(c, roster, schedule, assignments, lessons) {
       <input name="video_url" placeholder="Ссылка на видео (YouTube и т.п.)" style="width:100%">
       <input type="file" name="file">
       <button class="btn sm" type="submit">+ Урок</button>
+    </form>
+    <p class="meta" style="margin-top:14px;margin-bottom:4px">Экзамены (с подсчётом выходов и записью экрана)</p>
+    ${examsHtml}
+    <form class="mini-form" data-create-exam="${c.id}" style="align-items:flex-start">
+      <input name="title" placeholder="Название экзамена" maxlength="200" required>
+      <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"
+        style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px"></textarea>
+      <input name="time_limit_minutes" type="number" min="1" placeholder="Лимит, мин" style="width:120px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" name="require_recording"> Обязательна запись экрана</label>
+      <button class="btn sm" type="submit">+ Экзамен</button>
     </form>
   </div>`;
 }
@@ -1562,6 +1717,58 @@ async function loadAttemptsBox(lessonId, box) {
 function toggleAttemptsBox(lessonId, box) {
   if (!box.hidden) { box.hidden = true; return; }
   loadAttemptsBox(lessonId, box);
+}
+
+function renderExamEditor(questions) {
+  const list = questions.length ? questions.map(q => `<div class="roster-row"><span>${esc(q.text)}
+      <small>${q.options.map((o, i) => i === q.correct_index ? `✅ ${esc(o)}` : esc(o)).join(" · ")}</small>
+    </span><button type="button" class="btn ghost sm" data-delete-exam-question="${q.id}">Удалить</button></div>`).join("")
+    : `<div class="empty">Вопросов пока нет.</div>`;
+  return `${list}
+    <form class="mini-form" data-add-exam-question style="align-items:flex-start">
+      <input name="text" placeholder="Текст вопроса" maxlength="500" required style="width:100%">
+      <input name="options" placeholder="Варианты через ; (напр. 3;4;5)" required style="width:100%">
+      <input name="correct_index" type="number" min="0" placeholder="№ правильного (с 0)" required style="width:160px">
+      <button class="btn sm" type="submit">+ Вопрос</button>
+    </form>`;
+}
+
+async function loadExamEditor(examId, box) {
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const r = await chatFetch(`/api/academics/exams/${examId}/questions`);
+    box.innerHTML = renderExamEditor((await r.json()).questions);
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+function toggleExamEditor(examId, box) {
+  if (!box.hidden) { box.hidden = true; return; }
+  loadExamEditor(examId, box);
+}
+
+function renderExamAttempts(attempts) {
+  if (!attempts.length) return `<div class="empty">Пока никто не сдавал.</div>`;
+  return attempts.map(a => `<div class="people-row"><span>${esc(a.first_name)} ${esc(a.last_name)} — ${a.correct_count}/${a.total_count} (${Math.round(a.score)}%) · выходов за экран: ${a.tab_exit_count}</span>
+    ${a.has_recording ? `<button type="button" class="btn ghost sm" data-download-recording="${a.id}" data-filename="exam-${a.id}.webm">🎥 Запись</button>` : ""}</div>`).join("");
+}
+
+async function loadExamAttemptsBox(examId, box) {
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const r = await chatFetch(`/api/academics/exams/${examId}/attempts`);
+    box.innerHTML = renderExamAttempts((await r.json()).attempts);
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+function toggleExamAttemptsBox(examId, box) {
+  if (!box.hidden) { box.hidden = true; return; }
+  loadExamAttemptsBox(examId, box);
 }
 
 function renderSubmissions(submissions) {
@@ -1671,14 +1878,15 @@ async function loadTeaching() {
     const box = document.getElementById("academics-teaching-courses");
     if (!courses.length) { box.innerHTML = `<div class="empty">Пока нет дисциплин — создай первую выше.</div>`; return; }
     const parts = await Promise.all(courses.map(async c => {
-      const [rosterR, scheduleR, assignmentsR, lessonsR] = await Promise.all([
+      const [rosterR, scheduleR, assignmentsR, lessonsR, examsR] = await Promise.all([
         chatFetch(`/api/academics/courses/${c.id}/roster`),
         chatFetch(`/api/academics/courses/${c.id}/schedule`),
         chatFetch(`/api/academics/courses/${c.id}/assignments`),
         chatFetch(`/api/academics/courses/${c.id}/lessons`),
+        chatFetch(`/api/academics/courses/${c.id}/exams`),
       ]);
       return renderTeachingCourse(c, (await rosterR.json()).students, (await scheduleR.json()).schedule,
-        (await assignmentsR.json()).assignments, (await lessonsR.json()).lessons);
+        (await assignmentsR.json()).assignments, (await lessonsR.json()).lessons, (await examsR.json()).exams);
     }));
     box.innerHTML = parts.join("");
   } catch {}
@@ -1782,6 +1990,42 @@ function initAcademics() {
     if (toggleQuizBtn) {
       const form = document.getElementById(`quiz-form-${toggleQuizBtn.dataset.toggleQuiz}`);
       if (form) form.hidden = !form.hidden;
+      return;
+    }
+    const examEditBtn = e.target.closest("[data-show-exam-editor]");
+    if (examEditBtn) {
+      const examId = Number(examEditBtn.dataset.showExamEditor);
+      toggleExamEditor(examId, document.getElementById(`exam-editor-${examId}`));
+      return;
+    }
+    const examAttemptsBtn = e.target.closest("[data-show-exam-attempts]");
+    if (examAttemptsBtn) {
+      const examId = Number(examAttemptsBtn.dataset.showExamAttempts);
+      toggleExamAttemptsBox(examId, document.getElementById(`exam-attempts-${examId}`));
+      return;
+    }
+    const delExamBtn = e.target.closest("[data-delete-exam]");
+    if (delExamBtn) {
+      chatFetch("/api/academics/exams/delete", {method: "POST", body: JSON.stringify({exam_id: Number(delExamBtn.dataset.deleteExam)})})
+        .then(loadTeaching).catch(() => {});
+      return;
+    }
+    const delExamQBtn = e.target.closest("[data-delete-exam-question]");
+    if (delExamQBtn) {
+      const box = delExamQBtn.closest(".exam-editor-box");
+      const examId = Number(box.id.replace("exam-editor-", ""));
+      chatFetch("/api/academics/exam-questions/delete", {method: "POST", body: JSON.stringify({question_id: Number(delExamQBtn.dataset.deleteExamQuestion)})})
+        .then(() => loadExamEditor(examId, box)).catch(() => {});
+      return;
+    }
+    const dlRecordingBtn = e.target.closest("[data-download-recording]");
+    if (dlRecordingBtn) {
+      downloadViaChatFetch(`/api/academics/exam-attempts/${dlRecordingBtn.dataset.downloadRecording}/recording`, dlRecordingBtn.dataset.filename);
+      return;
+    }
+    const startExamBtn = e.target.closest("[data-start-exam]");
+    if (startExamBtn) {
+      startExam(Number(startExamBtn.dataset.startExam), startExamBtn.closest(".course-card"));
     }
   });
 
@@ -1877,6 +2121,64 @@ function initAcademics() {
           const lessonsBox = takeQuizForm.closest(".my-lessons-box");
           loadMyLessons(Number(lessonsBox.id.replace("my-lessons-", "")));
         }).catch(() => {});
+      return;
+    }
+    const createExamForm = e.target.closest("[data-create-exam]");
+    if (createExamForm) {
+      e.preventDefault();
+      const fd = new FormData(createExamForm);
+      const body = {
+        course_id: Number(createExamForm.dataset.createExam),
+        title: fd.get("title"), description: fd.get("description"),
+        time_limit_minutes: fd.get("time_limit_minutes") || null,
+        require_recording: fd.get("require_recording") === "on",
+      };
+      chatFetch("/api/academics/exams", {method: "POST", body: JSON.stringify(body)}).then(r => {
+        if (r.ok) createExamForm.reset();
+        loadTeaching();
+      }).catch(() => {});
+      return;
+    }
+    const addExamQForm = e.target.closest("[data-add-exam-question]");
+    if (addExamQForm) {
+      e.preventDefault();
+      const box = addExamQForm.closest(".exam-editor-box");
+      const examId = Number(box.id.replace("exam-editor-", ""));
+      const fd = new FormData(addExamQForm);
+      const body = {
+        exam_id: examId, text: fd.get("text"),
+        options: String(fd.get("options") || "").split(";").map(s => s.trim()).filter(Boolean),
+        correct_index: Number(fd.get("correct_index")),
+      };
+      chatFetch("/api/academics/exam-questions", {method: "POST", body: JSON.stringify(body)}).then(r => {
+        if (!r.ok) { alert("Проверьте вопрос: минимум 2 варианта, номер правильного — в пределах списка."); return; }
+        loadExamEditor(examId, box);
+      }).catch(() => {});
+      return;
+    }
+    const submitExamForm = e.target.closest("[data-submit-exam]");
+    if (submitExamForm) {
+      e.preventDefault();
+      const examId = Number(submitExamForm.dataset.submitExam);
+      const fd = new FormData(submitExamForm);
+      const answers = [];
+      for (let i = 0; fd.has(`q${i}`); i++) answers.push(Number(fd.get(`q${i}`)));
+      const {tab_exit_count, recording} = await finishExamSession(examId);
+      const body = {exam_id: examId, answers, tab_exit_count};
+      if (recording) body.recording = recording;
+      chatFetch("/api/academics/exams/submit", {method: "POST", body: JSON.stringify(body)}).then(async r => {
+        if (!r.ok) {
+          alert(r.status === 400 ? "Не получилось сдать: для этого экзамена обязательна запись экрана."
+            : `Не получилось сдать экзамен (код ${r.status}).`);
+          return;
+        }
+        const data = await r.json();
+        const lines = data.results.map((res, idx) =>
+          `${idx + 1}. ${res.is_correct ? "✅" : "❌"} ${res.text} — правильный ответ: ${res.options[res.correct_index]}`);
+        alert(`Результат: ${data.correct_count}/${data.total_count} (${Math.round(data.score)}%)\nВыходов за экран: ${data.tab_exit_count}\n\n${lines.join("\n")}`);
+        const examsBox = submitExamForm.closest(".my-exams-box");
+        loadMyExams(Number(examsBox.id.replace("my-exams-", "")));
+      }).catch(() => alert("Бэкенд недоступен."));
       return;
     }
     const enrollChoiceForm = e.target.closest("[data-enroll-choice]");
