@@ -1,4 +1,5 @@
 """SQLite-хранилище: профили, жалобы, баны, статистика диалогов и записи на ивенты."""
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -172,6 +173,37 @@ CREATE TABLE IF NOT EXISTS submissions (
     submitted_at  TEXT NOT NULL,
     graded_at     TEXT,
     UNIQUE(assignment_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS lessons (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id   INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    video_url   TEXT NOT NULL DEFAULT '',  -- ссылка на видео (YouTube и т.п.) — само видео не храним
+    file_name   TEXT,
+    file_type   TEXT,
+    file_data   BLOB,
+    created_by  INTEGER NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quiz_questions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    lesson_id     INTEGER NOT NULL,
+    text          TEXT NOT NULL,
+    options       TEXT NOT NULL,      -- JSON-список вариантов ответа
+    correct_index INTEGER NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    lesson_id     INTEGER NOT NULL,
+    user_id       INTEGER NOT NULL,
+    answers       TEXT NOT NULL,      -- JSON-список выбранных индексов, по порядку вопросов
+    correct_count INTEGER NOT NULL,
+    total_count   INTEGER NOT NULL,
+    score         REAL NOT NULL,      -- 0..100
+    submitted_at  TEXT NOT NULL,
+    UNIQUE(lesson_id, user_id)
 );
 """
 
@@ -823,6 +855,96 @@ class Database:
                 "WHERE id = ?",
                 (score, comment, _now(), submission_id),
             )
+
+    # ---------- видеоуроки и мини-тесты ----------
+
+    def create_lesson(self, course_id: int, title: str, description: str, video_url: str, created_by: int,
+                       file_name: str | None = None, file_type: str | None = None,
+                       file_data: bytes | None = None) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO lessons (course_id, title, description, video_url, file_name, file_type,
+                                        file_data, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (course_id, title, description, video_url, file_name, file_type, file_data, created_by, _now()),
+            )
+        return cur.lastrowid
+
+    def get_lesson(self, lesson_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+
+    def lessons_for_course(self, course_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM lessons WHERE course_id = ? ORDER BY created_at", (course_id,)
+        ).fetchall()
+
+    def delete_lesson(self, lesson_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM quiz_attempts WHERE lesson_id = ?", (lesson_id,))
+            self.conn.execute("DELETE FROM quiz_questions WHERE lesson_id = ?", (lesson_id,))
+            self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,))
+
+    def add_quiz_question(self, lesson_id: int, text: str, options: list[str], correct_index: int) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO quiz_questions (lesson_id, text, options, correct_index, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (lesson_id, text, json.dumps(options, ensure_ascii=False), correct_index, _now()),
+            )
+        return cur.lastrowid
+
+    def get_quiz_question(self, question_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM quiz_questions WHERE id = ?", (question_id,)).fetchone()
+
+    def delete_quiz_question(self, question_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM quiz_questions WHERE id = ?", (question_id,))
+
+    def quiz_questions_for_lesson(self, lesson_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM quiz_questions WHERE lesson_id = ? ORDER BY id", (lesson_id,)
+        ).fetchall()
+
+    def submit_quiz_attempt(self, lesson_id: int, user_id: int, answers: list[int]) -> dict:
+        """Авто-проверка: сверяет ответы с правильными индексами по порядку вопросов.
+        Повторное прохождение (пересдача теста) просто заменяет прошлую попытку."""
+        questions = self.quiz_questions_for_lesson(lesson_id)
+        results = []
+        correct_count = 0
+        for i, q in enumerate(questions):
+            selected = answers[i] if i < len(answers) else None
+            is_correct = selected == q["correct_index"]
+            if is_correct:
+                correct_count += 1
+            results.append({"question_id": q["id"], "text": q["text"], "options": json.loads(q["options"]),
+                             "selected": selected, "correct_index": q["correct_index"], "is_correct": is_correct})
+        total = len(questions)
+        score = (correct_count / total * 100) if total else 0.0
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO quiz_attempts (lesson_id, user_id, answers, correct_count, total_count, score,
+                                              submitted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(lesson_id, user_id) DO UPDATE SET
+                       answers = excluded.answers, correct_count = excluded.correct_count,
+                       total_count = excluded.total_count, score = excluded.score,
+                       submitted_at = excluded.submitted_at""",
+                (lesson_id, user_id, json.dumps(answers), correct_count, total, score, _now()),
+            )
+        return {"correct_count": correct_count, "total_count": total, "score": score, "results": results}
+
+    def get_quiz_attempt(self, lesson_id: int, user_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM quiz_attempts WHERE lesson_id = ? AND user_id = ?", (lesson_id, user_id)
+        ).fetchone()
+
+    def quiz_attempts_for_lesson(self, lesson_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT a.*, u.first_name, u.last_name FROM quiz_attempts a
+               JOIN web_users u ON u.id = a.user_id
+               WHERE a.lesson_id = ? ORDER BY a.submitted_at""",
+            (lesson_id,),
+        ).fetchall()
 
     # ---------- обслуживание ----------
 

@@ -1315,6 +1315,56 @@ async function loadMyAssignments(courseId) {
   }
 }
 
+function embedVideo(url) {
+  if (!url) return "";
+  const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([\w-]{6,})/);
+  if (yt) return `<iframe src="https://www.youtube.com/embed/${yt[1]}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:12px;margin-top:8px" allowfullscreen loading="lazy"></iframe>`;
+  return `<a class="btn ghost sm" href="${esc(url)}" target="_blank" rel="noopener">🎬 Открыть видео</a>`;
+}
+
+function renderQuizTaker(lessonId, questions, attempt) {
+  if (!questions.length) return `<p class="meta" style="margin-top:8px">Теста к этому уроку нет.</p>`;
+  const summary = attempt
+    ? `<p class="meta" style="margin-top:8px">Результат теста: ${attempt.correct_count}/${attempt.total_count} (${Math.round(attempt.score)}%)</p>
+       <button type="button" class="btn ghost sm" data-toggle-quiz="${lessonId}">Пройти заново</button>` : "";
+  return `${summary}
+    <form class="mini-form" data-take-quiz="${lessonId}" id="quiz-form-${lessonId}" style="align-items:flex-start;margin-top:8px" ${attempt ? "hidden" : ""}>
+      ${questions.map((q, i) => `<div style="width:100%">
+        <p class="meta">${esc(q.text)}</p>
+        ${q.options.map((o, oi) => `<label style="display:block;margin:2px 0;font-size:14px"><input type="radio" name="q${i}" value="${oi}" required> ${esc(o)}</label>`).join("")}
+      </div>`).join("")}
+      <button class="btn sm" type="submit">${attempt ? "Отправить заново" : "Отправить тест"}</button>
+    </form>`;
+}
+
+async function loadMyLessons(courseId) {
+  const box = document.getElementById(`my-lessons-${courseId}`);
+  if (!box) return;
+  try {
+    const r = await chatFetch(`/api/academics/courses/${courseId}/lessons`);
+    const lessons = (await r.json()).lessons;
+    if (!lessons.length) { box.innerHTML = `<div class="empty">Видеоуроков пока нет.</div>`; return; }
+    const parts = await Promise.all(lessons.map(async l => {
+      const [quizR, attemptR] = await Promise.all([
+        chatFetch(`/api/academics/lessons/${l.id}/quiz`),
+        chatFetch(`/api/academics/quiz/my-attempt?lesson_id=${l.id}`),
+      ]);
+      const questions = (await quizR.json()).questions;
+      const attempt = (await attemptR.json()).attempt;
+      return `<div class="course-card" style="margin-top:8px">
+        <h4 style="font-size:15px">${esc(l.title)}</h4>
+        ${l.description ? `<p class="meta">${esc(l.description)}</p>` : ""}
+        ${embedVideo(l.video_url)}
+        ${l.file_name ? `<button type="button" class="btn ghost sm" data-download-lesson="${l.id}" data-filename="${esc(l.file_name)}" style="margin-top:8px">📎 ${esc(l.file_name)}</button>` : ""}
+        ${renderQuizTaker(l.id, questions, attempt)}
+      </div>`;
+    }));
+    box.innerHTML = parts.join("");
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
 async function loadAcademicsOverview() {
   try {
     const [scheduleR, gradesR, myR, allR] = await Promise.all([
@@ -1337,8 +1387,10 @@ async function loadAcademicsOverview() {
           <div class="actions"><button type="button" class="btn ghost sm" data-unenroll="${c.id}">Отписаться</button></div>
           <p class="meta" style="margin-top:14px;margin-bottom:4px">Задания</p>
           <div class="my-assignments-box" id="my-assignments-${c.id}"><div class="empty">Загрузка…</div></div>
+          <p class="meta" style="margin-top:14px;margin-bottom:4px">Видеоуроки</p>
+          <div class="my-lessons-box" id="my-lessons-${c.id}"><div class="empty">Загрузка…</div></div>
         </div>`).join("");
-      myCourses.forEach(c => loadMyAssignments(c.id));
+      myCourses.forEach(c => { loadMyAssignments(c.id); loadMyLessons(c.id); });
     } else {
       myCoursesBox.innerHTML = `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
     }
@@ -1382,7 +1434,7 @@ async function startEnroll(courseId, card) {
   } catch {}
 }
 
-function renderTeachingCourse(c, roster, schedule, assignments) {
+function renderTeachingCourse(c, roster, schedule, assignments, lessons) {
   const rosterHtml = roster.length
     ? roster.map(s => `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}</span>
         <form class="mini-form" data-set-grade="${c.id}" data-student="${s.id}">
@@ -1412,6 +1464,17 @@ function renderTeachingCourse(c, roster, schedule, assignments) {
         <div class="submissions-box" id="submissions-box-${a.id}" hidden></div>`).join("")
     : `<div class="empty">Заданий пока нет.</div>`;
 
+  const lessonsHtml = lessons.length
+    ? lessons.map(l => `<div class="people-row"><span>${esc(l.title)}${l.video_url ? " · 🎬 видео" : ""}${l.file_name ? ` · 📎 ${esc(l.file_name)}` : ""}</span>
+        <span class="actions" style="margin:0">
+          <button type="button" class="btn ghost sm" data-show-quiz-editor="${l.id}">Вопросы теста</button>
+          <button type="button" class="btn ghost sm" data-show-attempts="${l.id}">Результаты</button>
+          <button type="button" class="btn ghost sm" data-delete-lesson="${l.id}">Удалить</button>
+        </span></div>
+        <div class="quiz-editor-box" id="quiz-editor-${l.id}" hidden></div>
+        <div class="attempts-box" id="attempts-box-${l.id}" hidden></div>`).join("")
+    : `<div class="empty">Видеоуроков пока нет.</div>`;
+
   return `<div class="course-card" data-course-id="${c.id}">
     <h4>${esc(c.code)} — ${esc(c.title)}</h4>
     ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
@@ -1437,7 +1500,68 @@ function renderTeachingCourse(c, roster, schedule, assignments) {
       <input type="file" name="file">
       <button class="btn sm" type="submit">+ Задание</button>
     </form>
+    <p class="meta" style="margin-top:14px;margin-bottom:4px">Видеоуроки</p>
+    ${lessonsHtml}
+    <form class="mini-form" data-create-lesson="${c.id}" style="align-items:flex-start">
+      <input name="title" placeholder="Название урока" maxlength="200" required>
+      <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"
+        style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px"></textarea>
+      <input name="video_url" placeholder="Ссылка на видео (YouTube и т.п.)" style="width:100%">
+      <input type="file" name="file">
+      <button class="btn sm" type="submit">+ Урок</button>
+    </form>
   </div>`;
+}
+
+function renderQuizEditor(questions) {
+  const list = questions.length ? questions.map(q => `<div class="roster-row"><span>${esc(q.text)}
+      <small>${q.options.map((o, i) => i === q.correct_index ? `✅ ${esc(o)}` : esc(o)).join(" · ")}</small>
+    </span><button type="button" class="btn ghost sm" data-delete-question="${q.id}">Удалить</button></div>`).join("")
+    : `<div class="empty">Вопросов пока нет.</div>`;
+  return `${list}
+    <form class="mini-form" data-add-question style="align-items:flex-start">
+      <input name="text" placeholder="Текст вопроса" maxlength="500" required style="width:100%">
+      <input name="options" placeholder="Варианты через ; (напр. 3;4;5)" required style="width:100%">
+      <input name="correct_index" type="number" min="0" placeholder="№ правильного (с 0)" required style="width:160px">
+      <button class="btn sm" type="submit">+ Вопрос</button>
+    </form>`;
+}
+
+async function loadQuizEditor(lessonId, box) {
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const r = await chatFetch(`/api/academics/lessons/${lessonId}/quiz`);
+    box.innerHTML = renderQuizEditor((await r.json()).questions);
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+function toggleQuizEditor(lessonId, box) {
+  if (!box.hidden) { box.hidden = true; return; }
+  loadQuizEditor(lessonId, box);
+}
+
+function renderAttempts(attempts) {
+  if (!attempts.length) return `<div class="empty">Пока никто не проходил тест.</div>`;
+  return attempts.map(a => `<div class="people-row"><span>${esc(a.first_name)} ${esc(a.last_name)} — ${a.correct_count}/${a.total_count} (${Math.round(a.score)}%)</span></div>`).join("");
+}
+
+async function loadAttemptsBox(lessonId, box) {
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const r = await chatFetch(`/api/academics/lessons/${lessonId}/attempts`);
+    box.innerHTML = renderAttempts((await r.json()).attempts);
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+function toggleAttemptsBox(lessonId, box) {
+  if (!box.hidden) { box.hidden = true; return; }
+  loadAttemptsBox(lessonId, box);
 }
 
 function renderSubmissions(submissions) {
@@ -1547,13 +1671,14 @@ async function loadTeaching() {
     const box = document.getElementById("academics-teaching-courses");
     if (!courses.length) { box.innerHTML = `<div class="empty">Пока нет дисциплин — создай первую выше.</div>`; return; }
     const parts = await Promise.all(courses.map(async c => {
-      const [rosterR, scheduleR, assignmentsR] = await Promise.all([
+      const [rosterR, scheduleR, assignmentsR, lessonsR] = await Promise.all([
         chatFetch(`/api/academics/courses/${c.id}/roster`),
         chatFetch(`/api/academics/courses/${c.id}/schedule`),
         chatFetch(`/api/academics/courses/${c.id}/assignments`),
+        chatFetch(`/api/academics/courses/${c.id}/lessons`),
       ]);
       return renderTeachingCourse(c, (await rosterR.json()).students, (await scheduleR.json()).schedule,
-        (await assignmentsR.json()).assignments);
+        (await assignmentsR.json()).assignments, (await lessonsR.json()).lessons);
     }));
     box.innerHTML = parts.join("");
   } catch {}
@@ -1620,6 +1745,43 @@ function initAcademics() {
     const dlSubBtn = e.target.closest("[data-download-submission]");
     if (dlSubBtn) {
       downloadViaChatFetch(`/api/academics/submissions/${dlSubBtn.dataset.downloadSubmission}/file`, dlSubBtn.dataset.filename);
+      return;
+    }
+    const quizEditBtn = e.target.closest("[data-show-quiz-editor]");
+    if (quizEditBtn) {
+      const lessonId = Number(quizEditBtn.dataset.showQuizEditor);
+      toggleQuizEditor(lessonId, document.getElementById(`quiz-editor-${lessonId}`));
+      return;
+    }
+    const attemptsBtn = e.target.closest("[data-show-attempts]");
+    if (attemptsBtn) {
+      const lessonId = Number(attemptsBtn.dataset.showAttempts);
+      toggleAttemptsBox(lessonId, document.getElementById(`attempts-box-${lessonId}`));
+      return;
+    }
+    const delLessonBtn = e.target.closest("[data-delete-lesson]");
+    if (delLessonBtn) {
+      chatFetch("/api/academics/lessons/delete", {method: "POST", body: JSON.stringify({lesson_id: Number(delLessonBtn.dataset.deleteLesson)})})
+        .then(loadTeaching).catch(() => {});
+      return;
+    }
+    const delQuestionBtn = e.target.closest("[data-delete-question]");
+    if (delQuestionBtn) {
+      const box = delQuestionBtn.closest(".quiz-editor-box");
+      const lessonId = Number(box.id.replace("quiz-editor-", ""));
+      chatFetch("/api/academics/quiz-questions/delete", {method: "POST", body: JSON.stringify({question_id: Number(delQuestionBtn.dataset.deleteQuestion)})})
+        .then(() => loadQuizEditor(lessonId, box)).catch(() => {});
+      return;
+    }
+    const dlLessonBtn = e.target.closest("[data-download-lesson]");
+    if (dlLessonBtn) {
+      downloadViaChatFetch(`/api/academics/lessons/${dlLessonBtn.dataset.downloadLesson}/file`, dlLessonBtn.dataset.filename);
+      return;
+    }
+    const toggleQuizBtn = e.target.closest("[data-toggle-quiz]");
+    if (toggleQuizBtn) {
+      const form = document.getElementById(`quiz-form-${toggleQuizBtn.dataset.toggleQuiz}`);
+      if (form) form.hidden = !form.hidden;
     }
   });
 
@@ -1664,6 +1826,57 @@ function initAcademics() {
         score: Number(fd.get("score")), comment: fd.get("comment") || ""};
       chatFetch("/api/academics/submissions/grade", {method: "POST", body: JSON.stringify(body)})
         .then(() => loadSubmissionsBox(assignmentId, box)).catch(() => {});
+      return;
+    }
+    const createLessonForm = e.target.closest("[data-create-lesson]");
+    if (createLessonForm) {
+      e.preventDefault();
+      const fd = new FormData(createLessonForm);
+      const body = {
+        course_id: Number(createLessonForm.dataset.createLesson),
+        title: fd.get("title"), description: fd.get("description"), video_url: fd.get("video_url"),
+      };
+      const file = await fileFieldToPayload(createLessonForm.querySelector('input[type="file"]'));
+      if (file) body.file = file;
+      chatFetch("/api/academics/lessons", {method: "POST", body: JSON.stringify(body)}).then(r => {
+        if (r.ok) createLessonForm.reset();
+        loadTeaching();
+      }).catch(() => {});
+      return;
+    }
+    const addQuestionForm = e.target.closest("[data-add-question]");
+    if (addQuestionForm) {
+      e.preventDefault();
+      const box = addQuestionForm.closest(".quiz-editor-box");
+      const lessonId = Number(box.id.replace("quiz-editor-", ""));
+      const fd = new FormData(addQuestionForm);
+      const body = {
+        lesson_id: lessonId, text: fd.get("text"),
+        options: String(fd.get("options") || "").split(";").map(s => s.trim()).filter(Boolean),
+        correct_index: Number(fd.get("correct_index")),
+      };
+      chatFetch("/api/academics/quiz-questions", {method: "POST", body: JSON.stringify(body)}).then(r => {
+        if (!r.ok) { alert("Проверьте вопрос: минимум 2 варианта, номер правильного — в пределах списка."); return; }
+        loadQuizEditor(lessonId, box);
+      }).catch(() => {});
+      return;
+    }
+    const takeQuizForm = e.target.closest("[data-take-quiz]");
+    if (takeQuizForm) {
+      e.preventDefault();
+      const lessonId = Number(takeQuizForm.dataset.takeQuiz);
+      const fd = new FormData(takeQuizForm);
+      const answers = [];
+      for (let i = 0; fd.has(`q${i}`); i++) answers.push(Number(fd.get(`q${i}`)));
+      chatFetch("/api/academics/quiz/submit", {method: "POST", body: JSON.stringify({lesson_id: lessonId, answers})})
+        .then(r => r.json())
+        .then(body => {
+          const lines = body.results.map((res, idx) =>
+            `${idx + 1}. ${res.is_correct ? "✅" : "❌"} ${res.text} — правильный ответ: ${res.options[res.correct_index]}`);
+          alert(`Результат: ${body.correct_count}/${body.total_count} (${Math.round(body.score)}%)\n\n${lines.join("\n")}`);
+          const lessonsBox = takeQuizForm.closest(".my-lessons-box");
+          loadMyLessons(Number(lessonsBox.id.replace("my-lessons-", "")));
+        }).catch(() => {});
       return;
     }
     const enrollChoiceForm = e.target.closest("[data-enroll-choice]");

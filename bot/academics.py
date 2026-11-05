@@ -1,6 +1,7 @@
 """Учёба: дисциплины, запись на них (с выбором варианта расписания), посещаемость
-с автоматическим ретейком, оценки и задания со сдачами (канал препод↔студент, как в MS
-Teams) — Platonus-стиль (дальше по плану: видеоуроки, прокторинг).
+с автоматическим ретейком, оценки, задания со сдачами (канал препод↔студент, как в MS
+Teams) и видеоуроки с мини-тестом после просмотра (как в Moodle) — Platonus-стиль
+(дальше по плану: прокторинг).
 
 «Канал» — это просто дисциплина (courses), а не отдельная сущность: у неё уже есть
 преподаватель и ростер записанных студентов, этого достаточно. Вопрос преподавателю
@@ -28,6 +29,7 @@ Teams) — Platonus-стиль (дальше по плану: видеоурок
 - admin — может всё то же, что teacher и registrar вместе, по любой дисциплине.
 """
 import base64
+import json
 import re
 
 from aiohttp import web
@@ -63,6 +65,12 @@ ALLOWED_FILE_TYPES = {
     "text/plain", "text/csv",
     "image/jpeg", "image/png", "image/webp", "image/gif",
 }
+
+MAX_VIDEO_URL_LEN = 500
+MAX_QUESTION_TEXT_LEN = 500
+MAX_OPTION_LEN = 200
+MIN_OPTIONS = 2
+MAX_OPTIONS = 8
 
 
 def _require_user(db: Database, user_id: int):
@@ -690,6 +698,197 @@ async def grade_submission(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+def _public_lesson(row) -> dict:
+    return {
+        "id": row["id"], "course_id": row["course_id"], "title": row["title"],
+        "description": row["description"], "video_url": row["video_url"], "file_name": row["file_name"],
+    }
+
+
+async def list_lessons(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        course_id = int(request.match_info["course_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid course id")
+    _require_enrolled_or_manager(db, user_id, course_id)
+    items = [_public_lesson(lesson) for lesson in db.lessons_for_course(course_id)]
+    return web.json_response({"lessons": items})
+
+
+async def create_lesson(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    course_id = _course_id_from(data)
+    _require_grade_manager(db, user_id, course_id)
+
+    title = str(data.get("title", "")).strip()[:MAX_ASSIGNMENT_TITLE_LEN]
+    description = str(data.get("description", "")).strip()[:MAX_DESCRIPTION_LEN]
+    video_url = str(data.get("video_url", "")).strip()[:MAX_VIDEO_URL_LEN]
+    if not title:
+        raise web.HTTPBadRequest(reason="title is required")
+    filename, content_type, file_bytes = _decode_optional_file(data)
+
+    lesson_id = db.create_lesson(course_id, title, description, video_url, user_id,
+                                  filename, content_type, file_bytes)
+    return web.json_response({"ok": True, "lesson": _public_lesson(db.get_lesson(lesson_id))}, status=201)
+
+
+async def delete_lesson(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    lesson_id = _int_field(data, "lesson_id")
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None:
+        raise web.HTTPNotFound(reason="lesson not found")
+    _require_grade_manager(db, user_id, lesson["course_id"])
+    db.delete_lesson(lesson_id)
+    return web.json_response({"ok": True})
+
+
+async def lesson_file(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        lesson_id = int(request.match_info["lesson_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid lesson id")
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None or lesson["file_data"] is None:
+        raise web.HTTPNotFound(reason="file not found")
+    _require_enrolled_or_manager(db, user_id, lesson["course_id"])
+    return web.Response(body=lesson["file_data"], content_type=lesson["file_type"],
+                         headers={"Content-Disposition": f'attachment; filename="{lesson["file_name"]}"'})
+
+
+def _validate_options(data: dict) -> tuple[str, list[str], int]:
+    text = str(data.get("text", "")).strip()[:MAX_QUESTION_TEXT_LEN]
+    options = data.get("options")
+    if not text:
+        raise web.HTTPBadRequest(reason="text is required")
+    if not isinstance(options, list) or not (MIN_OPTIONS <= len(options) <= MAX_OPTIONS):
+        raise web.HTTPBadRequest(reason=f"options must be a list of {MIN_OPTIONS}-{MAX_OPTIONS} strings")
+    options = [str(o).strip()[:MAX_OPTION_LEN] for o in options]
+    if any(not o for o in options):
+        raise web.HTTPBadRequest(reason="options can't be empty")
+    try:
+        correct_index = int(data.get("correct_index"))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason="correct_index is required")
+    if not 0 <= correct_index < len(options):
+        raise web.HTTPBadRequest(reason="correct_index out of range")
+    return text, options, correct_index
+
+
+async def add_quiz_question(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    lesson_id = _int_field(data, "lesson_id")
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None:
+        raise web.HTTPNotFound(reason="lesson not found")
+    _require_grade_manager(db, user_id, lesson["course_id"])
+
+    text, options, correct_index = _validate_options(data)
+    question_id = db.add_quiz_question(lesson_id, text, options, correct_index)
+    return web.json_response({"ok": True, "id": question_id}, status=201)
+
+
+async def delete_quiz_question(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    question_id = _int_field(data, "question_id")
+    question = db.get_quiz_question(question_id)
+    if question is None:
+        raise web.HTTPNotFound(reason="question not found")
+    lesson = db.get_lesson(question["lesson_id"])
+    _require_grade_manager(db, user_id, lesson["course_id"])
+    db.delete_quiz_question(question_id)
+    return web.json_response({"ok": True})
+
+
+async def get_quiz(request: web.Request) -> web.Response:
+    """Студент видит вопросы без правильного индекса (чтобы не подсматривать), преподаватель
+    этой дисциплины/админ — с ним (для редактирования/проверки)."""
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        lesson_id = int(request.match_info["lesson_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid lesson id")
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None:
+        raise web.HTTPNotFound(reason="lesson not found")
+    is_manager = _require_enrolled_or_manager(db, user_id, lesson["course_id"])
+
+    questions = []
+    for q in db.quiz_questions_for_lesson(lesson_id):
+        item = {"id": q["id"], "text": q["text"], "options": json.loads(q["options"])}
+        if is_manager:
+            item["correct_index"] = q["correct_index"]
+        questions.append(item)
+    return web.json_response({"questions": questions})
+
+
+async def submit_quiz(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    lesson_id = _int_field(data, "lesson_id")
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None:
+        raise web.HTTPNotFound(reason="lesson not found")
+    if not db.is_enrolled(user_id, lesson["course_id"]):
+        raise web.HTTPForbidden(reason="not enrolled in this course")
+
+    answers = data.get("answers")
+    if not isinstance(answers, list):
+        raise web.HTTPBadRequest(reason="answers must be a list of option indices")
+    try:
+        answers = [int(a) for a in answers]
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason="answers must be integers")
+
+    result = db.submit_quiz_attempt(lesson_id, user_id, answers)
+    return web.json_response({"ok": True, **result})
+
+
+async def my_quiz_attempt(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    lesson_id = _int_field(dict(request.query), "lesson_id")
+    attempt = db.get_quiz_attempt(lesson_id, user_id)
+    if attempt is None:
+        return web.json_response({"attempt": None})
+    return web.json_response({"attempt": {
+        "correct_count": attempt["correct_count"], "total_count": attempt["total_count"],
+        "score": attempt["score"], "submitted_at": attempt["submitted_at"],
+    }})
+
+
+async def lesson_attempts(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        lesson_id = int(request.match_info["lesson_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid lesson id")
+    lesson = db.get_lesson(lesson_id)
+    if lesson is None:
+        raise web.HTTPNotFound(reason="lesson not found")
+    _require_grade_manager(db, user_id, lesson["course_id"])
+
+    out = [{"user_id": a["user_id"], "first_name": a["first_name"], "last_name": a["last_name"],
+            "correct_count": a["correct_count"], "total_count": a["total_count"], "score": a["score"],
+            "submitted_at": a["submitted_at"]} for a in db.quiz_attempts_for_lesson(lesson_id)]
+    return web.json_response({"attempts": out})
+
+
 def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/academics/courses", list_courses)
     app.router.add_get("/api/academics/my-courses", my_courses)
@@ -721,3 +920,13 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/academics/assignments/{assignment_id}/submissions", assignment_submissions)
     app.router.add_get("/api/academics/submissions/{submission_id}/file", submission_file)
     app.router.add_post("/api/academics/submissions/grade", grade_submission)
+    app.router.add_get("/api/academics/courses/{course_id}/lessons", list_lessons)
+    app.router.add_post("/api/academics/lessons", create_lesson)
+    app.router.add_post("/api/academics/lessons/delete", delete_lesson)
+    app.router.add_get("/api/academics/lessons/{lesson_id}/file", lesson_file)
+    app.router.add_post("/api/academics/quiz-questions", add_quiz_question)
+    app.router.add_post("/api/academics/quiz-questions/delete", delete_quiz_question)
+    app.router.add_get("/api/academics/lessons/{lesson_id}/quiz", get_quiz)
+    app.router.add_post("/api/academics/quiz/submit", submit_quiz)
+    app.router.add_get("/api/academics/quiz/my-attempt", my_quiz_attempt)
+    app.router.add_get("/api/academics/lessons/{lesson_id}/attempts", lesson_attempts)

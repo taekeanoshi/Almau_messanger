@@ -713,3 +713,207 @@ def test_assignment_rejects_bad_file_and_empty_submission(monkeypatch):
             assert (await resp.json())["assignments"] == []
 
     run(go())
+
+
+async def _setup_course_with_lesson(client, sent, admin_token="admintok"):
+    """Общий сетап: преподаватель + дисциплина + видеоурок с 2 вопросами, студент записан."""
+    key = await _rotate_key(client, "teacher", admin_token)
+    teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                                "teacher@example.com", "secret1", "teacher", key)
+    student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                         "a@example.com", "secret1", "male")
+    t_teacher, t_student = teacher["token"], student["token"]
+
+    resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
+                             json={"code": "CS101", "title": "Введение"})
+    course_id = (await resp.json())["course"]["id"]
+    await client.post("/api/academics/enroll", headers=auth(t_student), json={"course_id": course_id})
+
+    resp = await client.post("/api/academics/lessons", headers=auth(t_teacher), json={
+        "course_id": course_id, "title": "Урок 1: переменные",
+        "description": "Основы", "video_url": "https://youtu.be/abc123",
+    })
+    lesson_id = (await resp.json())["lesson"]["id"]
+
+    await client.post("/api/academics/quiz-questions", headers=auth(t_teacher), json={
+        "lesson_id": lesson_id, "text": "2 + 2 = ?", "options": ["3", "4", "5"], "correct_index": 1,
+    })
+    await client.post("/api/academics/quiz-questions", headers=auth(t_teacher), json={
+        "lesson_id": lesson_id, "text": "Столица Казахстана?", "options": ["Алматы", "Астана"], "correct_index": 1,
+    })
+    return teacher, student, course_id, lesson_id
+
+
+def test_lesson_create_list_and_file_access(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            key = await _rotate_key(client, "teacher")
+            teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                                        "teacher@example.com", "secret1", "teacher", key)
+            student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                                 "a@example.com", "secret1", "male")
+            outsider = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
+                                                   "c@example.com", "secret1", "female")
+            t_teacher, t_student, t_outsider = teacher["token"], student["token"], outsider["token"]
+
+            resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
+                                     json={"code": "CS101", "title": "Введение"})
+            course_id = (await resp.json())["course"]["id"]
+            await client.post("/api/academics/enroll", headers=auth(t_student), json={"course_id": course_id})
+
+            # Студент не может создать урок
+            resp = await client.post("/api/academics/lessons", headers=auth(t_student),
+                                     json={"course_id": course_id, "title": "Хак"})
+            assert resp.status == 403
+
+            notes = _file_payload("notes.docx",
+                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                  b"fake word doc")
+            resp = await client.post("/api/academics/lessons", headers=auth(t_teacher), json={
+                "course_id": course_id, "title": "Урок 1", "description": "Вступление",
+                "video_url": "https://youtu.be/xyz", "file": notes,
+            })
+            assert resp.status == 201
+            lesson_id = (await resp.json())["lesson"]["id"]
+
+            # Записанный студент видит урок и может скачать материал
+            resp = await client.get(f"/api/academics/courses/{course_id}/lessons", headers=auth(t_student))
+            lessons = (await resp.json())["lessons"]
+            assert len(lessons) == 1 and lessons[0]["video_url"] == "https://youtu.be/xyz"
+
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/file", headers=auth(t_student))
+            assert resp.status == 200 and await resp.read() == b"fake word doc"
+
+            # Незаписанный посторонний — ни список, ни файл
+            resp = await client.get(f"/api/academics/courses/{course_id}/lessons", headers=auth(t_outsider))
+            assert resp.status == 403
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/file", headers=auth(t_outsider))
+            assert resp.status == 403
+
+    run(go())
+
+
+def test_quiz_hides_correct_answer_from_students(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, lesson_id = await _setup_course_with_lesson(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/quiz", headers=auth(t_student))
+            questions = (await resp.json())["questions"]
+            assert len(questions) == 2
+            assert all("correct_index" not in q for q in questions)
+
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/quiz", headers=auth(t_teacher))
+            questions = (await resp.json())["questions"]
+            assert all("correct_index" in q for q in questions)
+
+    run(go())
+
+
+def test_quiz_submit_auto_grades_and_allows_retake(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, lesson_id = await _setup_course_with_lesson(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            # Один верный, один неверный ответ
+            resp = await client.post("/api/academics/quiz/submit", headers=auth(t_student),
+                                     json={"lesson_id": lesson_id, "answers": [1, 0]})
+            assert resp.status == 200
+            body = await resp.json()
+            assert body["correct_count"] == 1 and body["total_count"] == 2 and body["score"] == 50.0
+            assert body["results"][0]["is_correct"] is True and body["results"][1]["is_correct"] is False
+            assert body["results"][1]["correct_index"] == 1  # правильный ответ виден после попытки
+
+            resp = await client.get("/api/academics/quiz/my-attempt", headers=auth(t_student),
+                                     params={"lesson_id": lesson_id})
+            attempt = (await resp.json())["attempt"]
+            assert attempt["score"] == 50.0
+
+            # Пересдача — оба верно, перезаписывает прошлую попытку, а не плодит новую
+            resp = await client.post("/api/academics/quiz/submit", headers=auth(t_student),
+                                     json={"lesson_id": lesson_id, "answers": [1, 1]})
+            assert (await resp.json())["score"] == 100.0
+
+            resp = await client.get("/api/academics/quiz/my-attempt", headers=auth(t_student),
+                                     params={"lesson_id": lesson_id})
+            assert (await resp.json())["attempt"]["score"] == 100.0
+
+            # Преподаватель видит результат студента в списке попыток
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/attempts", headers=auth(t_teacher))
+            attempts = (await resp.json())["attempts"]
+            assert len(attempts) == 1 and attempts[0]["score"] == 100.0 and attempts[0]["first_name"] == "Аян"
+
+            # Незаписанный не может пройти тест
+            outsider = await _register_and_verify(client, sent, "Данияр", "Ким", "+77001110004",
+                                                   "d@example.com", "secret1", "male")
+            resp = await client.post("/api/academics/quiz/submit", headers=auth(outsider["token"]),
+                                     json={"lesson_id": lesson_id, "answers": [1, 1]})
+            assert resp.status == 403
+
+    run(go())
+
+
+def test_quiz_question_validation_and_delete(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, lesson_id = await _setup_course_with_lesson(client, sent)
+            t_teacher = teacher["token"]
+
+            # Меньше 2 вариантов — отклоняется
+            resp = await client.post("/api/academics/quiz-questions", headers=auth(t_teacher),
+                                     json={"lesson_id": lesson_id, "text": "Q?", "options": ["один"], "correct_index": 0})
+            assert resp.status == 400
+
+            # correct_index вне диапазона — отклоняется
+            resp = await client.post("/api/academics/quiz-questions", headers=auth(t_teacher), json={
+                "lesson_id": lesson_id, "text": "Q?", "options": ["a", "b"], "correct_index": 5,
+            })
+            assert resp.status == 400
+
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/quiz", headers=auth(t_teacher))
+            questions = (await resp.json())["questions"]
+            assert len(questions) == 2  # ни один из невалидных не добавился
+
+            resp = await client.post("/api/academics/quiz-questions/delete", headers=auth(t_teacher),
+                                     json={"question_id": questions[0]["id"]})
+            assert resp.status == 200
+            resp = await client.get(f"/api/academics/lessons/{lesson_id}/quiz", headers=auth(t_teacher))
+            assert len((await resp.json())["questions"]) == 1
+
+    run(go())
+
+
+def test_delete_lesson_cascades_quiz(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, lesson_id = await _setup_course_with_lesson(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            await client.post("/api/academics/quiz/submit", headers=auth(t_student),
+                              json={"lesson_id": lesson_id, "answers": [1, 1]})
+
+            resp = await client.post("/api/academics/lessons/delete", headers=auth(t_teacher),
+                                     json={"lesson_id": lesson_id})
+            assert resp.status == 200
+
+            resp = await client.get(f"/api/academics/courses/{course_id}/lessons", headers=auth(t_student))
+            assert (await resp.json())["lessons"] == []
+
+    run(go())

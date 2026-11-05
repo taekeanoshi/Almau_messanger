@@ -176,6 +176,16 @@ python -m bot.main
 | GET | `/api/academics/assignments/{id}/submissions` | все сдачи по заданию — преподаватель дисциплины/админ |
 | GET | `/api/academics/submissions/{id}/file` | файл конкретной сдачи — сам сдавший студент или преподаватель дисциплины/админ |
 | POST | `/api/academics/submissions/grade` | `{"submission_id", "score", опц. "comment"}` — оценить сдачу |
+| GET | `/api/academics/courses/{id}/lessons` | видеоуроки дисциплины — записанному студенту или преподавателю дисциплины/админу |
+| POST | `/api/academics/lessons` | `{"course_id", "title", опц. "description", "video_url", "file"}` — создать видеоурок; видео храним ссылкой (YouTube и т.п.), не файлом; материал — файл до 10 МБ, как в заданиях |
+| POST | `/api/academics/lessons/delete` | `{"lesson_id"}` — удалить урок вместе с вопросами теста и попытками |
+| GET | `/api/academics/lessons/{id}/file` | файл-материал урока — записанному студенту/преподавателю дисциплины/админу |
+| POST | `/api/academics/quiz-questions` | `{"lesson_id", "text", "options": [...] (2-8 шт.), "correct_index"}` — добавить вопрос к мини-тесту урока |
+| POST | `/api/academics/quiz-questions/delete` | `{"question_id"}` |
+| GET | `/api/academics/lessons/{id}/quiz` | вопросы теста — студенту без `correct_index` (чтобы не подсматривать), преподавателю/админу — с ним |
+| POST | `/api/academics/quiz/submit` | `{"lesson_id", "answers": [индексы по порядку вопросов]}` — авто-проверка; повторное прохождение перезаписывает попытку, а не плодит новую |
+| GET | `/api/academics/quiz/my-attempt?lesson_id=<id>` | своя попытка (счёт, сколько верно) или `null` |
+| GET | `/api/academics/lessons/{id}/attempts` | результаты всех студентов по тесту — преподаватель дисциплины/админ |
 
 Проверить локально после `python -m bot.api_server`:
 
