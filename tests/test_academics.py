@@ -1,5 +1,6 @@
 """Тесты учёбы: дисциплины, запись на них, расписание и оценки (первый модуль Platonus-стиля)."""
 import asyncio
+import base64
 
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -558,5 +559,157 @@ def test_attendance_marking_and_automatic_retake(monkeypatch):
                 "class_date": "2026-01-05", "present": True,
             })
             assert resp.status == 400
+
+    run(go())
+
+
+def _file_payload(filename, content_type, raw_bytes):
+    return {"filename": filename, "content_type": content_type, "data": base64.b64encode(raw_bytes).decode()}
+
+
+def test_assignment_create_submit_grade_flow(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            key = await _rotate_key(client, "teacher")
+            teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                                        "teacher@example.com", "secret1", "teacher", key)
+            student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                                 "a@example.com", "secret1", "male")
+            outsider = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
+                                                   "c@example.com", "secret1", "female")
+            t_teacher, t_student, t_outsider = teacher["token"], student["token"], outsider["token"]
+
+            resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
+                                     json={"code": "CS101", "title": "Введение"})
+            course_id = (await resp.json())["course"]["id"]
+            await client.post("/api/academics/enroll", headers=auth(t_student), json={"course_id": course_id})
+
+            # Незаписанный/непреподающий не видит задания дисциплины
+            resp = await client.get(f"/api/academics/courses/{course_id}/assignments", headers=auth(t_outsider))
+            assert resp.status == 403
+
+            # Студент тоже не может создать задание
+            resp = await client.post("/api/academics/assignments", headers=auth(t_student),
+                                     json={"course_id": course_id, "title": "ДЗ1"})
+            assert resp.status == 403
+
+            task_file = _file_payload("task.pdf", "application/pdf", b"%PDF-1.4 fake")
+            resp = await client.post("/api/academics/assignments", headers=auth(t_teacher), json={
+                "course_id": course_id, "title": "ДЗ1", "description": "Решить задачи 1-5",
+                "due_at": "2026-02-01", "file": task_file,
+            })
+            assert resp.status == 201
+            assignment_id = (await resp.json())["assignment"]["id"]
+
+            # Студент видит задание и может скачать файл
+            resp = await client.get(f"/api/academics/courses/{course_id}/assignments", headers=auth(t_student))
+            assignments = (await resp.json())["assignments"]
+            assert len(assignments) == 1 and assignments[0]["title"] == "ДЗ1"
+
+            resp = await client.get(f"/api/academics/assignments/{assignment_id}/file", headers=auth(t_student))
+            assert resp.status == 200 and await resp.read() == b"%PDF-1.4 fake"
+
+            # Посторонний скачать файл задания не может
+            resp = await client.get(f"/api/academics/assignments/{assignment_id}/file", headers=auth(t_outsider))
+            assert resp.status == 403
+
+            # Незаписанный не может сдать
+            resp = await client.post("/api/academics/submissions", headers=auth(t_outsider),
+                                     json={"assignment_id": assignment_id, "text": "решение"})
+            assert resp.status == 403
+
+            # Студент сдаёт с файлом
+            answer_file = _file_payload("answer.docx",
+                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        b"fake docx bytes")
+            resp = await client.post("/api/academics/submissions", headers=auth(t_student), json={
+                "assignment_id": assignment_id, "text": "Вот моё решение", "file": answer_file,
+            })
+            assert resp.status == 200
+            submission_id = (await resp.json())["id"]
+
+            # Видит свою сдачу
+            resp = await client.get("/api/academics/my-submission", headers=auth(t_student),
+                                     params={"assignment_id": assignment_id})
+            sub = (await resp.json())["submission"]
+            assert sub["status"] == "submitted" and sub["text"] == "Вот моё решение"
+
+            # Студент может скачать свой файл обратно, посторонний — нет
+            resp = await client.get(f"/api/academics/submissions/{submission_id}/file", headers=auth(t_student))
+            assert resp.status == 200 and await resp.read() == b"fake docx bytes"
+            resp = await client.get(f"/api/academics/submissions/{submission_id}/file", headers=auth(t_outsider))
+            assert resp.status == 403
+
+            # Студент не видит чужие сдачи (нет прав), а преподаватель видит все
+            resp = await client.get(f"/api/academics/assignments/{assignment_id}/submissions", headers=auth(t_student))
+            assert resp.status == 403
+            resp = await client.get(f"/api/academics/assignments/{assignment_id}/submissions", headers=auth(t_teacher))
+            submissions = (await resp.json())["submissions"]
+            assert len(submissions) == 1 and submissions[0]["first_name"] == "Аян"
+
+            # Преподаватель ставит оценку
+            resp = await client.post("/api/academics/submissions/grade", headers=auth(t_teacher),
+                                     json={"submission_id": submission_id, "score": 95, "comment": "Отлично"})
+            assert resp.status == 200
+
+            resp = await client.get("/api/academics/my-submission", headers=auth(t_student),
+                                     params={"assignment_id": assignment_id})
+            sub = (await resp.json())["submission"]
+            assert sub["status"] == "graded" and sub["grade_score"] == 95 and sub["grade_comment"] == "Отлично"
+
+            # Пересдача сбрасывает оценку и статус обратно на "submitted"
+            resp = await client.post("/api/academics/submissions", headers=auth(t_student),
+                                     json={"assignment_id": assignment_id, "text": "Исправленное решение"})
+            assert resp.status == 200
+            resp = await client.get("/api/academics/my-submission", headers=auth(t_student),
+                                     params={"assignment_id": assignment_id})
+            sub = (await resp.json())["submission"]
+            assert sub["status"] == "submitted" and sub["grade_score"] is None and sub["text"] == "Исправленное решение"
+
+    run(go())
+
+
+def test_assignment_rejects_bad_file_and_empty_submission(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            key = await _rotate_key(client, "teacher")
+            teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                                        "teacher@example.com", "secret1", "teacher", key)
+            student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                                 "a@example.com", "secret1", "male")
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
+                                     json={"code": "CS101", "title": "Введение"})
+            course_id = (await resp.json())["course"]["id"]
+            await client.post("/api/academics/enroll", headers=auth(t_student), json={"course_id": course_id})
+
+            # Неразрешённый content_type отклоняется
+            bad_file = _file_payload("virus.exe", "application/x-msdownload", b"MZ")
+            resp = await client.post("/api/academics/assignments", headers=auth(t_teacher),
+                                     json={"course_id": course_id, "title": "ДЗ1", "file": bad_file})
+            assert resp.status == 400
+
+            resp = await client.post("/api/academics/assignments", headers=auth(t_teacher),
+                                     json={"course_id": course_id, "title": "ДЗ1"})
+            assignment_id = (await resp.json())["assignment"]["id"]
+
+            # Ни текста, ни файла — сдать нельзя
+            resp = await client.post("/api/academics/submissions", headers=auth(t_student),
+                                     json={"assignment_id": assignment_id, "text": ""})
+            assert resp.status == 400
+
+            # Удаление задания преподавателем — студент больше его не видит
+            resp = await client.post("/api/academics/assignments/delete", headers=auth(t_teacher),
+                                     json={"assignment_id": assignment_id})
+            assert resp.status == 200
+            resp = await client.get(f"/api/academics/courses/{course_id}/assignments", headers=auth(t_student))
+            assert (await resp.json())["assignments"] == []
 
     run(go())

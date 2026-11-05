@@ -167,6 +167,15 @@ python -m bot.main
 | POST | `/api/academics/attendance/mark` | `{"schedule_item_id", "user_id", "class_date" ("YYYY-MM-DD"), "present"}` — отметить присутствие/отсутствие; только преподаватель этого варианта расписания/админ. Новую отметку нельзя поставить, если у студента уже больше 30% пропусков (`409`) — но уже существующую отметку (в т.ч. за прошлые недели) можно поправить всегда |
 | POST | `/api/academics/attendance/delete` | `{"schedule_item_id", "user_id", "class_date"}` — снять отметку за дату (тоже работает за прошлые недели) |
 | GET | `/api/academics/schedule-items/{id}/attendance` | список студентов этого варианта расписания с их посещаемостью и статусом ретейка — для преподавателя варианта/админа |
+| GET | `/api/academics/courses/{id}/assignments` | задания дисциплины — записанному студенту (видит только своё) или преподавателю дисциплины/админу (видит всё) |
+| POST | `/api/academics/assignments` | `{"course_id", "title", опц. "description", "due_at" ("YYYY-MM-DD"), "file": {"filename","content_type","data" (base64)}}` — создать задание, файл до 10 МБ (pdf/zip/doc/xls/ppt/txt/картинки) |
+| POST | `/api/academics/assignments/delete` | `{"assignment_id"}` — удалить задание вместе со всеми сдачами |
+| GET | `/api/academics/assignments/{id}/file` | файл задания — записанному студенту/преподавателю дисциплины/админу |
+| POST | `/api/academics/submissions` | `{"assignment_id", "text", опц. "file"}` — сдать (или пересдать — затирает предыдущую сдачу и сбрасывает оценку); нужны текст или файл |
+| GET | `/api/academics/my-submission?assignment_id=<id>` | своя сдача по заданию (или `null`, если ещё не сдавал) |
+| GET | `/api/academics/assignments/{id}/submissions` | все сдачи по заданию — преподаватель дисциплины/админ |
+| GET | `/api/academics/submissions/{id}/file` | файл конкретной сдачи — сам сдавший студент или преподаватель дисциплины/админ |
+| POST | `/api/academics/submissions/grade` | `{"submission_id", "score", опц. "comment"}` — оценить сдачу |
 
 Проверить локально после `python -m bot.api_server`:
 

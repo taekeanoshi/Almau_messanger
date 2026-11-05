@@ -1279,6 +1279,42 @@ function fmtAttendance(stats) {
   return `<p class="meta">Пропущено ${stats.absent} из ${stats.total} (${Math.round(stats.ratio * 100)}%)${retake}</p>`;
 }
 
+function fmtSubmissionStatus(sub) {
+  if (!sub) return `<p class="meta">Пока не сдано.</p>`;
+  if (sub.status === "graded") return `<p class="meta">Оценено: ${sub.grade_score}${sub.grade_comment ? " · " + esc(sub.grade_comment) : ""}</p>`;
+  return `<p class="meta">Сдано, ожидает проверки.</p>`;
+}
+
+async function loadMyAssignments(courseId) {
+  const box = document.getElementById(`my-assignments-${courseId}`);
+  if (!box) return;
+  try {
+    const r = await chatFetch(`/api/academics/courses/${courseId}/assignments`);
+    const assignments = (await r.json()).assignments;
+    if (!assignments.length) { box.innerHTML = `<div class="empty">Заданий пока нет.</div>`; return; }
+    const parts = await Promise.all(assignments.map(async a => {
+      const subR = await chatFetch(`/api/academics/my-submission?assignment_id=${a.id}`);
+      const sub = (await subR.json()).submission;
+      return `<div class="course-card" style="margin-top:8px">
+        <h4 style="font-size:15px">${esc(a.title)}</h4>
+        ${a.description ? `<p class="meta">${esc(a.description)}</p>` : ""}
+        ${a.due_at ? `<p class="meta">Срок: ${esc(a.due_at)}</p>` : ""}
+        ${a.file_name ? `<button type="button" class="btn ghost sm" data-download-assignment="${a.id}" data-filename="${esc(a.file_name)}">📎 ${esc(a.file_name)}</button>` : ""}
+        ${fmtSubmissionStatus(sub)}
+        <form class="mini-form" data-submit-assignment="${a.id}" style="align-items:flex-start">
+          <textarea name="text" placeholder="Текст решения" maxlength="5000"
+            style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px">${sub ? esc(sub.text) : ""}</textarea>
+          <input type="file" name="file">
+          <button class="btn sm" type="submit">${sub ? "Пересдать" : "Сдать"}</button>
+        </form>
+      </div>`;
+    }));
+    box.innerHTML = parts.join("");
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
 async function loadAcademicsOverview() {
   try {
     const [scheduleR, gradesR, myR, allR] = await Promise.all([
@@ -1294,11 +1330,18 @@ async function loadAcademicsOverview() {
     document.getElementById("academics-schedule").innerHTML = fmtSchedule(schedule);
     document.getElementById("academics-grades").innerHTML = fmtGrades(grades);
 
-    document.getElementById("academics-my-courses").innerHTML = myCourses.length
-      ? myCourses.map(c => `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
+    const myCoursesBox = document.getElementById("academics-my-courses");
+    if (myCourses.length) {
+      myCoursesBox.innerHTML = myCourses.map(c => `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
           ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
-          <div class="actions"><button type="button" class="btn ghost sm" data-unenroll="${c.id}">Отписаться</button></div></div>`).join("")
-      : `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
+          <div class="actions"><button type="button" class="btn ghost sm" data-unenroll="${c.id}">Отписаться</button></div>
+          <p class="meta" style="margin-top:14px;margin-bottom:4px">Задания</p>
+          <div class="my-assignments-box" id="my-assignments-${c.id}"><div class="empty">Загрузка…</div></div>
+        </div>`).join("");
+      myCourses.forEach(c => loadMyAssignments(c.id));
+    } else {
+      myCoursesBox.innerHTML = `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
+    }
 
     document.getElementById("academics-all-courses").innerHTML = allCourses.length
       ? allCourses.map(c => `<div class="course-card" data-course-id="${c.id}"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
@@ -1339,7 +1382,7 @@ async function startEnroll(courseId, card) {
   } catch {}
 }
 
-function renderTeachingCourse(c, roster, schedule) {
+function renderTeachingCourse(c, roster, schedule, assignments) {
   const rosterHtml = roster.length
     ? roster.map(s => `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}</span>
         <form class="mini-form" data-set-grade="${c.id}" data-student="${s.id}">
@@ -1360,6 +1403,15 @@ function renderTeachingCourse(c, roster, schedule) {
         <div class="attendance-box" id="attendance-box-${i.id}" hidden></div>`).join("")
     : `<div class="empty">Расписания пока нет.</div>`;
 
+  const assignmentsHtml = assignments.length
+    ? assignments.map(a => `<div class="people-row"><span>${esc(a.title)}${a.due_at ? ` · до ${esc(a.due_at)}` : ""}${a.file_name ? ` · 📎 ${esc(a.file_name)}` : ""}</span>
+        <span class="actions" style="margin:0">
+          <button type="button" class="btn ghost sm" data-show-submissions="${a.id}">Сдачи</button>
+          <button type="button" class="btn ghost sm" data-delete-assignment="${a.id}">Удалить</button>
+        </span></div>
+        <div class="submissions-box" id="submissions-box-${a.id}" hidden></div>`).join("")
+    : `<div class="empty">Заданий пока нет.</div>`;
+
   return `<div class="course-card" data-course-id="${c.id}">
     <h4>${esc(c.code)} — ${esc(c.title)}</h4>
     ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
@@ -1375,7 +1427,79 @@ function renderTeachingCourse(c, roster, schedule) {
     </form>
     <p class="meta" style="margin-top:14px;margin-bottom:4px">Студенты (${roster.length})</p>
     ${rosterHtml}
+    <p class="meta" style="margin-top:14px;margin-bottom:4px">Задания</p>
+    ${assignmentsHtml}
+    <form class="mini-form" data-create-assignment="${c.id}" style="align-items:flex-start">
+      <input name="title" placeholder="Название задания" maxlength="200" required>
+      <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"
+        style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px"></textarea>
+      <input name="due_at" type="date">
+      <input type="file" name="file">
+      <button class="btn sm" type="submit">+ Задание</button>
+    </form>
   </div>`;
+}
+
+function renderSubmissions(submissions) {
+  if (!submissions.length) return `<div class="empty">Пока никто не сдал.</div>`;
+  return submissions.map(s => `
+    <div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}
+      ${s.status === "graded" ? `<small>Оценено: ${s.grade_score}${s.grade_comment ? " · " + esc(s.grade_comment) : ""}</small>` : `<small>Ожидает проверки</small>`}
+    </span></div>
+    ${s.text ? `<p class="meta" style="white-space:pre-wrap">${esc(s.text)}</p>` : ""}
+    ${s.file_name ? `<button type="button" class="btn ghost sm" data-download-submission="${s.id}" data-filename="${esc(s.file_name)}">📎 ${esc(s.file_name)}</button>` : ""}
+    <form class="mini-form" data-grade-submission="${s.id}">
+      <input name="score" type="number" step="0.1" placeholder="Балл" required style="width:90px">
+      <input name="comment" placeholder="Комментарий" maxlength="500">
+      <button class="btn sm" type="submit">Оценить</button>
+    </form>`).join("");
+}
+
+async function loadSubmissionsBox(assignmentId, box) {
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const r = await chatFetch(`/api/academics/assignments/${assignmentId}/submissions`);
+    box.innerHTML = renderSubmissions((await r.json()).submissions);
+  } catch {
+    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
+  }
+}
+
+function toggleSubmissionsBox(assignmentId, box) {
+  if (!box.hidden) { box.hidden = true; return; }
+  loadSubmissionsBox(assignmentId, box);
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function fileFieldToPayload(fileInput) {
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  if (!file) return null;
+  return {filename: file.name, content_type: file.type || "application/octet-stream", data: await readFileAsBase64(file)};
+}
+
+async function downloadViaChatFetch(url, filename) {
+  try {
+    const r = await chatFetch(url);
+    if (!r.ok) throw new Error("download");
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch {
+    alert("Не получилось скачать файл.");
+  }
 }
 
 function renderAttendanceBox(students) {
@@ -1423,11 +1547,13 @@ async function loadTeaching() {
     const box = document.getElementById("academics-teaching-courses");
     if (!courses.length) { box.innerHTML = `<div class="empty">Пока нет дисциплин — создай первую выше.</div>`; return; }
     const parts = await Promise.all(courses.map(async c => {
-      const [rosterR, scheduleR] = await Promise.all([
+      const [rosterR, scheduleR, assignmentsR] = await Promise.all([
         chatFetch(`/api/academics/courses/${c.id}/roster`),
         chatFetch(`/api/academics/courses/${c.id}/schedule`),
+        chatFetch(`/api/academics/courses/${c.id}/assignments`),
       ]);
-      return renderTeachingCourse(c, (await rosterR.json()).students, (await scheduleR.json()).schedule);
+      return renderTeachingCourse(c, (await rosterR.json()).students, (await scheduleR.json()).schedule,
+        (await assignmentsR.json()).assignments);
     }));
     box.innerHTML = parts.join("");
   } catch {}
@@ -1471,10 +1597,75 @@ function initAcademics() {
     if (attBtn) {
       const itemId = Number(attBtn.dataset.showAttendance);
       toggleAttendanceBox(itemId, document.getElementById(`attendance-box-${itemId}`));
+      return;
+    }
+    const subBtn = e.target.closest("[data-show-submissions]");
+    if (subBtn) {
+      const assignmentId = Number(subBtn.dataset.showSubmissions);
+      toggleSubmissionsBox(assignmentId, document.getElementById(`submissions-box-${assignmentId}`));
+      return;
+    }
+    const delAssignBtn = e.target.closest("[data-delete-assignment]");
+    if (delAssignBtn) {
+      chatFetch("/api/academics/assignments/delete",
+        {method: "POST", body: JSON.stringify({assignment_id: Number(delAssignBtn.dataset.deleteAssignment)})})
+        .then(loadTeaching).catch(() => {});
+      return;
+    }
+    const dlAssignBtn = e.target.closest("[data-download-assignment]");
+    if (dlAssignBtn) {
+      downloadViaChatFetch(`/api/academics/assignments/${dlAssignBtn.dataset.downloadAssignment}/file`, dlAssignBtn.dataset.filename);
+      return;
+    }
+    const dlSubBtn = e.target.closest("[data-download-submission]");
+    if (dlSubBtn) {
+      downloadViaChatFetch(`/api/academics/submissions/${dlSubBtn.dataset.downloadSubmission}/file`, dlSubBtn.dataset.filename);
     }
   });
 
-  document.addEventListener("submit", e => {
+  document.addEventListener("submit", async e => {
+    const createAssignForm = e.target.closest("[data-create-assignment]");
+    if (createAssignForm) {
+      e.preventDefault();
+      const fd = new FormData(createAssignForm);
+      const body = {
+        course_id: Number(createAssignForm.dataset.createAssignment),
+        title: fd.get("title"), description: fd.get("description"), due_at: fd.get("due_at") || null,
+      };
+      const file = await fileFieldToPayload(createAssignForm.querySelector('input[type="file"]'));
+      if (file) body.file = file;
+      chatFetch("/api/academics/assignments", {method: "POST", body: JSON.stringify(body)}).then(r => {
+        if (r.ok) createAssignForm.reset();
+        loadTeaching();
+      }).catch(() => {});
+      return;
+    }
+    const submitAssignForm = e.target.closest("[data-submit-assignment]");
+    if (submitAssignForm) {
+      e.preventDefault();
+      const assignmentId = Number(submitAssignForm.dataset.submitAssignment);
+      const fd = new FormData(submitAssignForm);
+      const body = {assignment_id: assignmentId, text: fd.get("text") || ""};
+      const file = await fileFieldToPayload(submitAssignForm.querySelector('input[type="file"]'));
+      if (file) body.file = file;
+      const box = submitAssignForm.closest(".my-assignments-box");
+      const courseId = Number(box.id.replace("my-assignments-", ""));
+      chatFetch("/api/academics/submissions", {method: "POST", body: JSON.stringify(body)})
+        .then(() => loadMyAssignments(courseId)).catch(() => {});
+      return;
+    }
+    const gradeSubForm = e.target.closest("[data-grade-submission]");
+    if (gradeSubForm) {
+      e.preventDefault();
+      const fd = new FormData(gradeSubForm);
+      const box = gradeSubForm.closest(".submissions-box");
+      const assignmentId = Number(box.id.replace("submissions-box-", ""));
+      const body = {submission_id: Number(gradeSubForm.dataset.gradeSubmission),
+        score: Number(fd.get("score")), comment: fd.get("comment") || ""};
+      chatFetch("/api/academics/submissions/grade", {method: "POST", body: JSON.stringify(body)})
+        .then(() => loadSubmissionsBox(assignmentId, box)).catch(() => {});
+      return;
+    }
     const enrollChoiceForm = e.target.closest("[data-enroll-choice]");
     if (enrollChoiceForm) {
       e.preventDefault();

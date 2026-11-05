@@ -146,6 +146,33 @@ CREATE TABLE IF NOT EXISTS staff_invite_keys (
     key_hash    TEXT NOT NULL,
     created_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS assignments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id   INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    due_at      TEXT,                 -- ISO-дата дедлайна, необязательно
+    file_name   TEXT,
+    file_type   TEXT,
+    file_data   BLOB,
+    created_by  INTEGER NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS submissions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id INTEGER NOT NULL,
+    user_id       INTEGER NOT NULL,
+    text          TEXT NOT NULL DEFAULT '',
+    file_name     TEXT,
+    file_type     TEXT,
+    file_data     BLOB,
+    status        TEXT NOT NULL DEFAULT 'submitted',  -- 'submitted' | 'graded'
+    grade_score   REAL,
+    grade_comment TEXT NOT NULL DEFAULT '',
+    submitted_at  TEXT NOT NULL,
+    graded_at     TEXT,
+    UNIQUE(assignment_id, user_id)
+);
 """
 
 
@@ -727,6 +754,75 @@ class Database:
     def get_invite_key_hash(self, role: str) -> str | None:
         row = self.conn.execute("SELECT key_hash FROM staff_invite_keys WHERE role = ?", (role,)).fetchone()
         return row["key_hash"] if row else None
+
+    # ---------- задания и сдачи (канал препод↔студент) ----------
+
+    def create_assignment(self, course_id: int, title: str, description: str, due_at: str | None,
+                           created_by: int, file_name: str | None = None, file_type: str | None = None,
+                           file_data: bytes | None = None) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO assignments (course_id, title, description, due_at, file_name, file_type,
+                                            file_data, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (course_id, title, description, due_at, file_name, file_type, file_data, created_by, _now()),
+            )
+        return cur.lastrowid
+
+    def get_assignment(self, assignment_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM assignments WHERE id = ?", (assignment_id,)).fetchone()
+
+    def assignments_for_course(self, course_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM assignments WHERE course_id = ? ORDER BY created_at DESC", (course_id,)
+        ).fetchall()
+
+    def delete_assignment(self, assignment_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM submissions WHERE assignment_id = ?", (assignment_id,))
+            self.conn.execute("DELETE FROM assignments WHERE id = ?", (assignment_id,))
+
+    def upsert_submission(self, assignment_id: int, user_id: int, text: str,
+                           file_name: str | None = None, file_type: str | None = None,
+                           file_data: bytes | None = None) -> int:
+        """Пересдача до проверки — обычное дело: повторная отправка просто заменяет
+        прошлую (включая файл) и сбрасывает оценку, если она уже была выставлена."""
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO submissions (assignment_id, user_id, text, file_name, file_type, file_data,
+                                            status, submitted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 'submitted', ?)
+                   ON CONFLICT(assignment_id, user_id) DO UPDATE SET
+                       text = excluded.text, file_name = excluded.file_name, file_type = excluded.file_type,
+                       file_data = excluded.file_data, status = 'submitted', submitted_at = excluded.submitted_at,
+                       grade_score = NULL, grade_comment = '', graded_at = NULL""",
+                (assignment_id, user_id, text, file_name, file_type, file_data, _now()),
+            )
+        return cur.lastrowid
+
+    def get_submission(self, submission_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM submissions WHERE id = ?", (submission_id,)).fetchone()
+
+    def get_submission_for(self, assignment_id: int, user_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM submissions WHERE assignment_id = ? AND user_id = ?", (assignment_id, user_id)
+        ).fetchone()
+
+    def submissions_for_assignment(self, assignment_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT s.*, u.first_name, u.last_name FROM submissions s
+               JOIN web_users u ON u.id = s.user_id
+               WHERE s.assignment_id = ? ORDER BY s.submitted_at""",
+            (assignment_id,),
+        ).fetchall()
+
+    def grade_submission(self, submission_id: int, score: float, comment: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE submissions SET status = 'graded', grade_score = ?, grade_comment = ?, graded_at = ? "
+                "WHERE id = ?",
+                (score, comment, _now(), submission_id),
+            )
 
     # ---------- обслуживание ----------
 

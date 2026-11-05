@@ -1,6 +1,11 @@
 """Учёба: дисциплины, запись на них (с выбором варианта расписания), посещаемость
-с автоматическим ретейком и оценки — Platonus-стиль, первый модуль учебной части платформы
-(дальше по плану: каналы с заданиями, видеоуроки, прокторинг).
+с автоматическим ретейком, оценки и задания со сдачами (канал препод↔студент, как в MS
+Teams) — Platonus-стиль (дальше по плану: видеоуроки, прокторинг).
+
+«Канал» — это просто дисциплина (courses), а не отдельная сущность: у неё уже есть
+преподаватель и ростер записанных студентов, этого достаточно. Вопрос преподавателю
+«по поводу вопросов» — это уже работающий прямой чат по ФИО (bot/web_chat.py, вкладка
+«Люди»): туда уже попадают и преподаватели, искать и писать можно как любому студенту.
 
 Роли у аккаунта (web_users.role): 'student' (по умолчанию при регистрации), 'teacher',
 'registrar' (отдел расписания), 'admin'. Роль teacher/registrar нельзя получить обычной
@@ -22,6 +27,7 @@
   студента на другой день (choose_schedule от чужого имени). Оценки и посещаемость не трогает.
 - admin — может всё то же, что teacher и registrar вместе, по любой дисциплине.
 """
+import base64
 import re
 
 from aiohttp import web
@@ -41,6 +47,22 @@ SCHEDULING_ROLES = {"registrar", "admin"}
 VALID_KINDS = {"лекция", "практика", "лаб", "семинар"}
 WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+MAX_ASSIGNMENT_TITLE_LEN = 200
+MAX_ASSIGNMENT_TEXT_LEN = 5000
+MAX_FILE_NAME_LEN = 150
+MAX_FILE_BYTES = 10 * 1024 * 1024
+ALLOWED_FILE_TYPES = {
+    "application/pdf", "application/zip",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain", "text/csv",
+    "image/jpeg", "image/png", "image/webp", "image/gif",
+}
 
 
 def _require_user(db: Database, user_id: int):
@@ -472,6 +494,202 @@ async def slot_attendance(request: web.Request) -> web.Response:
     return web.json_response({"students": out})
 
 
+def _decode_optional_file(data: dict) -> tuple[str, str, bytes] | tuple[None, None, None]:
+    """Файл в теле запроса — {"filename", "content_type", "data" (base64)}, необязателен."""
+    file = data.get("file")
+    if not file:
+        return None, None, None
+    if not isinstance(file, dict):
+        raise web.HTTPBadRequest(reason="file must be an object with filename, content_type, data")
+    filename = re.sub(r'[\r\n"]', "_", str(file.get("filename", "")).strip())[:MAX_FILE_NAME_LEN]
+    content_type = str(file.get("content_type", "")).strip().lower()
+    if not filename or content_type not in ALLOWED_FILE_TYPES:
+        raise web.HTTPBadRequest(reason=f"content_type must be one of {sorted(ALLOWED_FILE_TYPES)}")
+    try:
+        file_bytes = base64.b64decode(str(file.get("data", "")), validate=True)
+    except Exception:
+        raise web.HTTPBadRequest(reason="invalid file data")
+    if not file_bytes or len(file_bytes) > MAX_FILE_BYTES:
+        raise web.HTTPBadRequest(reason="file too large or empty")
+    return filename, content_type, file_bytes
+
+
+def _require_enrolled_or_manager(db: Database, user_id: int, course_id: int) -> bool:
+    """Задания видит записанный студент (только себя) или преподаватель этой дисциплины/админ
+    (видит всех). Возвращает True, если это «менеджер» (может видеть все сдачи), иначе False."""
+    user = _require_user(db, user_id)
+    course = _require_course(db, course_id)
+    if user["role"] == "admin" or (user["role"] == "teacher" and course["teacher_id"] == user_id):
+        return True
+    if db.is_enrolled(user_id, course_id):
+        return False
+    raise web.HTTPForbidden(reason="not enrolled in this course")
+
+
+def _public_assignment(row) -> dict:
+    return {
+        "id": row["id"], "course_id": row["course_id"], "title": row["title"],
+        "description": row["description"], "due_at": row["due_at"], "created_by": row["created_by"],
+        "created_at": row["created_at"], "file_name": row["file_name"],
+    }
+
+
+def _public_submission(row, include_names: bool = False) -> dict:
+    out = {
+        "id": row["id"], "assignment_id": row["assignment_id"], "user_id": row["user_id"],
+        "text": row["text"], "status": row["status"], "grade_score": row["grade_score"],
+        "grade_comment": row["grade_comment"], "submitted_at": row["submitted_at"],
+        "graded_at": row["graded_at"], "file_name": row["file_name"],
+    }
+    if include_names and "first_name" in row.keys():
+        out["first_name"] = row["first_name"]
+        out["last_name"] = row["last_name"]
+    return out
+
+
+async def list_assignments(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        course_id = int(request.match_info["course_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid course id")
+    _require_enrolled_or_manager(db, user_id, course_id)
+    items = [_public_assignment(a) for a in db.assignments_for_course(course_id)]
+    return web.json_response({"assignments": items})
+
+
+async def create_assignment(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    course_id = _course_id_from(data)
+    _require_grade_manager(db, user_id, course_id)
+
+    title = str(data.get("title", "")).strip()[:MAX_ASSIGNMENT_TITLE_LEN]
+    description = str(data.get("description", "")).strip()[:MAX_DESCRIPTION_LEN]
+    due_at = str(data.get("due_at", "")).strip() or None
+    if not title:
+        raise web.HTTPBadRequest(reason="title is required")
+    filename, content_type, file_bytes = _decode_optional_file(data)
+
+    assignment_id = db.create_assignment(course_id, title, description, due_at, user_id,
+                                          filename, content_type, file_bytes)
+    return web.json_response(
+        {"ok": True, "assignment": _public_assignment(db.get_assignment(assignment_id))}, status=201)
+
+
+async def delete_assignment(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    assignment_id = _int_field(data, "assignment_id")
+    assignment = db.get_assignment(assignment_id)
+    if assignment is None:
+        raise web.HTTPNotFound(reason="assignment not found")
+    _require_grade_manager(db, user_id, assignment["course_id"])
+    db.delete_assignment(assignment_id)
+    return web.json_response({"ok": True})
+
+
+async def assignment_file(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        assignment_id = int(request.match_info["assignment_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid assignment id")
+    assignment = db.get_assignment(assignment_id)
+    if assignment is None or assignment["file_data"] is None:
+        raise web.HTTPNotFound(reason="file not found")
+    _require_enrolled_or_manager(db, user_id, assignment["course_id"])
+    return web.Response(body=assignment["file_data"], content_type=assignment["file_type"],
+                         headers={"Content-Disposition": f'attachment; filename="{assignment["file_name"]}"'})
+
+
+async def submit_assignment(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    assignment_id = _int_field(data, "assignment_id")
+    assignment = db.get_assignment(assignment_id)
+    if assignment is None:
+        raise web.HTTPNotFound(reason="assignment not found")
+    if not db.is_enrolled(user_id, assignment["course_id"]):
+        raise web.HTTPForbidden(reason="not enrolled in this course")
+
+    text = str(data.get("text", "")).strip()[:MAX_ASSIGNMENT_TEXT_LEN]
+    filename, content_type, file_bytes = _decode_optional_file(data)
+    if not text and filename is None:
+        raise web.HTTPBadRequest(reason="text or file is required")
+
+    submission_id = db.upsert_submission(assignment_id, user_id, text, filename, content_type, file_bytes)
+    return web.json_response({"ok": True, "id": submission_id})
+
+
+async def my_submission(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    assignment_id = _int_field(dict(request.query), "assignment_id")
+    submission = db.get_submission_for(assignment_id, user_id)
+    return web.json_response({"submission": _public_submission(submission) if submission else None})
+
+
+async def assignment_submissions(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        assignment_id = int(request.match_info["assignment_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid assignment id")
+    assignment = db.get_assignment(assignment_id)
+    if assignment is None:
+        raise web.HTTPNotFound(reason="assignment not found")
+    _require_grade_manager(db, user_id, assignment["course_id"])
+    items = [_public_submission(s, include_names=True) for s in db.submissions_for_assignment(assignment_id)]
+    return web.json_response({"submissions": items})
+
+
+async def submission_file(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        submission_id = int(request.match_info["submission_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid submission id")
+    submission = db.get_submission(submission_id)
+    if submission is None or submission["file_data"] is None:
+        raise web.HTTPNotFound(reason="file not found")
+    assignment = db.get_assignment(submission["assignment_id"])
+    user = _require_user(db, user_id)
+    course = _require_course(db, assignment["course_id"])
+    is_manager = user["role"] == "admin" or (user["role"] == "teacher" and course["teacher_id"] == user_id)
+    if submission["user_id"] != user_id and not is_manager:
+        raise web.HTTPForbidden(reason="not allowed")
+    return web.Response(body=submission["file_data"], content_type=submission["file_type"],
+                         headers={"Content-Disposition": f'attachment; filename="{submission["file_name"]}"'})
+
+
+async def grade_submission(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    submission_id = _int_field(data, "submission_id")
+    submission = db.get_submission(submission_id)
+    if submission is None:
+        raise web.HTTPNotFound(reason="submission not found")
+    assignment = db.get_assignment(submission["assignment_id"])
+    _require_grade_manager(db, user_id, assignment["course_id"])
+
+    try:
+        score = float(data.get("score"))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason="score is required")
+    comment = str(data.get("comment", "")).strip()[:MAX_COMMENT_LEN]
+    db.grade_submission(submission_id, score, comment)
+    return web.json_response({"ok": True})
+
+
 def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/academics/courses", list_courses)
     app.router.add_get("/api/academics/my-courses", my_courses)
@@ -494,3 +712,12 @@ def register_routes(app: web.Application) -> None:
     app.router.add_post("/api/academics/attendance/mark", mark_attendance)
     app.router.add_post("/api/academics/attendance/delete", delete_attendance_mark)
     app.router.add_get("/api/academics/schedule-items/{item_id}/attendance", slot_attendance)
+    app.router.add_get("/api/academics/courses/{course_id}/assignments", list_assignments)
+    app.router.add_post("/api/academics/assignments", create_assignment)
+    app.router.add_post("/api/academics/assignments/delete", delete_assignment)
+    app.router.add_get("/api/academics/assignments/{assignment_id}/file", assignment_file)
+    app.router.add_post("/api/academics/submissions", submit_assignment)
+    app.router.add_get("/api/academics/my-submission", my_submission)
+    app.router.add_get("/api/academics/assignments/{assignment_id}/submissions", assignment_submissions)
+    app.router.add_get("/api/academics/submissions/{submission_id}/file", submission_file)
+    app.router.add_post("/api/academics/submissions/grade", grade_submission)
