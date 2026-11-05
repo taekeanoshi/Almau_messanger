@@ -319,6 +319,44 @@ def test_teacher_cannot_use_anonymous_chat_or_event_going(monkeypatch):
     run(go())
 
 
+def test_admin_account_can_use_everything(monkeypatch):
+    """Личный аккаунт с ролью admin — не только управление учёбой: анонимный чат и
+    отметка «Иду» на ивентах тоже доступны, в отличие от teacher/registrar."""
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            u = await _register_and_verify(client, sent, "Хамит", "Хасанов", "+77001110009",
+                                           "owner@example.com", "secret1", "male")
+            resp = await client.post("/api/admin/set-role", params={"token": "admintok"},
+                                     json={"email": "owner@example.com", "role": "admin"})
+            assert resp.status == 200
+            t = u["token"]
+
+            resp = await client.post("/api/chat/search", headers=auth(t), json={"preference": "any"})
+            assert resp.status == 200
+
+            events = await (await client.get("/api/events")).json()
+            event_id = events[0]["id"]
+            resp = await client.post(f"/api/events/{event_id}/going", headers=auth(t), json={"going": True})
+            assert resp.status == 200
+
+            # И, как и раньше, полный доступ к учёбе: видит все дисциплины как "преподаваемые"
+            other_key = await _rotate_key(client, "teacher")
+            other_teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                                              "teacher@example.com", "secret1", "teacher", other_key)
+            resp = await client.post("/api/academics/courses", headers=auth(other_teacher["token"]),
+                                     json={"code": "CS101", "title": "Введение"})
+            course_id = (await resp.json())["course"]["id"]
+
+            resp = await client.get("/api/academics/teaching", headers=auth(t))
+            courses = (await resp.json())["courses"]
+            assert any(c["id"] == course_id for c in courses)
+
+    run(go())
+
+
 def test_multi_variant_schedule_choice(monkeypatch):
     """Дисциплина с двумя вариантами расписания (напр. математика по Пн или по Ср) —
     студент обязан выбрать один при записи и может сменить выбор позже."""

@@ -122,8 +122,8 @@ async def post_event_going(request: web.Request) -> web.Response:
         raise web.HTTPNotFound(reason="event not found")
 
     user_id = require_session(request)
-    if db.get_web_user(user_id)["role"] != "student":
-        raise web.HTTPForbidden(reason="only student accounts can mark events")
+    if db.get_web_user(user_id)["role"] not in ("student", "admin"):
+        raise web.HTTPForbidden(reason="only student or admin accounts can mark events")
     data = await read_json_body(request)
     going = bool(data.get("going", True))
 

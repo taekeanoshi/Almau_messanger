@@ -368,8 +368,8 @@ def _start_search(request: web.Request, user_id: int, preference: str) -> dict:
         raise web.HTTPBadRequest(reason="preference must be any, same or opposite")
     db: Database = request.app["db"]
     row = db.get_web_user(user_id)
-    if row["role"] != "student":
-        raise web.HTTPForbidden(reason="anonymous chat is for student accounts only")
+    if row["role"] not in ("student", "admin"):
+        raise web.HTTPForbidden(reason="anonymous chat is for student or admin accounts only")
     mm: WebMatchmaker = request.app["web_mm"]
     result = mm.search(user_id, row["gender"], preference)
     if result["status"] == "matched":
