@@ -205,6 +205,39 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
     submitted_at  TEXT NOT NULL,
     UNIQUE(lesson_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS exams (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id           INTEGER NOT NULL,
+    title               TEXT NOT NULL,
+    description         TEXT NOT NULL DEFAULT '',
+    time_limit_minutes  INTEGER,
+    require_recording   INTEGER NOT NULL DEFAULT 0,  -- 1 = нужна запись экрана, чтобы начать
+    created_by          INTEGER NOT NULL,
+    created_at          TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS exam_questions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    exam_id       INTEGER NOT NULL,
+    text          TEXT NOT NULL,
+    options       TEXT NOT NULL,
+    correct_index INTEGER NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS exam_attempts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    exam_id         INTEGER NOT NULL,
+    user_id         INTEGER NOT NULL,
+    answers         TEXT NOT NULL,
+    correct_count   INTEGER NOT NULL,
+    total_count     INTEGER NOT NULL,
+    score           REAL NOT NULL,
+    tab_exit_count  INTEGER NOT NULL DEFAULT 0,  -- сколько раз студент ушёл с вкладки/окна во время теста
+    recording_name  TEXT,
+    recording_type  TEXT,
+    recording_data  BLOB,                        -- запись экрана (webm/mp4), необязательна
+    submitted_at    TEXT NOT NULL,
+    UNIQUE(exam_id, user_id)
+);
 """
 
 
@@ -944,6 +977,101 @@ class Database:
                JOIN web_users u ON u.id = a.user_id
                WHERE a.lesson_id = ? ORDER BY a.submitted_at""",
             (lesson_id,),
+        ).fetchall()
+
+    # ---------- проктор-экзамены: подсчёт выходов за пределы окна + запись экрана ----------
+
+    def create_exam(self, course_id: int, title: str, description: str, time_limit_minutes: int | None,
+                     require_recording: bool, created_by: int) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                """INSERT INTO exams (course_id, title, description, time_limit_minutes, require_recording,
+                                      created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (course_id, title, description, time_limit_minutes, int(require_recording), created_by, _now()),
+            )
+        return cur.lastrowid
+
+    def get_exam(self, exam_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM exams WHERE id = ?", (exam_id,)).fetchone()
+
+    def exams_for_course(self, course_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM exams WHERE course_id = ? ORDER BY created_at", (course_id,)).fetchall()
+
+    def delete_exam(self, exam_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM exam_attempts WHERE exam_id = ?", (exam_id,))
+            self.conn.execute("DELETE FROM exam_questions WHERE exam_id = ?", (exam_id,))
+            self.conn.execute("DELETE FROM exams WHERE id = ?", (exam_id,))
+
+    def add_exam_question(self, exam_id: int, text: str, options: list[str], correct_index: int) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO exam_questions (exam_id, text, options, correct_index, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (exam_id, text, json.dumps(options, ensure_ascii=False), correct_index, _now()),
+            )
+        return cur.lastrowid
+
+    def get_exam_question(self, question_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM exam_questions WHERE id = ?", (question_id,)).fetchone()
+
+    def delete_exam_question(self, question_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM exam_questions WHERE id = ?", (question_id,))
+
+    def exam_questions_for_exam(self, exam_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM exam_questions WHERE exam_id = ? ORDER BY id", (exam_id,)
+        ).fetchall()
+
+    def submit_exam_attempt(self, exam_id: int, user_id: int, answers: list[int], tab_exit_count: int,
+                             recording_name: str | None = None, recording_type: str | None = None,
+                             recording_data: bytes | None = None) -> dict:
+        questions = self.exam_questions_for_exam(exam_id)
+        results = []
+        correct_count = 0
+        for i, q in enumerate(questions):
+            selected = answers[i] if i < len(answers) else None
+            is_correct = selected == q["correct_index"]
+            if is_correct:
+                correct_count += 1
+            results.append({"question_id": q["id"], "text": q["text"], "options": json.loads(q["options"]),
+                             "selected": selected, "correct_index": q["correct_index"], "is_correct": is_correct})
+        total = len(questions)
+        score = (correct_count / total * 100) if total else 0.0
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO exam_attempts (exam_id, user_id, answers, correct_count, total_count, score,
+                                              tab_exit_count, recording_name, recording_type, recording_data,
+                                              submitted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(exam_id, user_id) DO UPDATE SET
+                       answers = excluded.answers, correct_count = excluded.correct_count,
+                       total_count = excluded.total_count, score = excluded.score,
+                       tab_exit_count = excluded.tab_exit_count, recording_name = excluded.recording_name,
+                       recording_type = excluded.recording_type, recording_data = excluded.recording_data,
+                       submitted_at = excluded.submitted_at""",
+                (exam_id, user_id, json.dumps(answers), correct_count, total, score, tab_exit_count,
+                 recording_name, recording_type, recording_data, _now()),
+            )
+        return {"correct_count": correct_count, "total_count": total, "score": score,
+                "tab_exit_count": tab_exit_count, "results": results}
+
+    def get_exam_attempt(self, exam_id: int, user_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM exam_attempts WHERE exam_id = ? AND user_id = ?", (exam_id, user_id)
+        ).fetchone()
+
+    def get_exam_attempt_by_id(self, attempt_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM exam_attempts WHERE id = ?", (attempt_id,)).fetchone()
+
+    def exam_attempts_for_exam(self, exam_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT a.*, u.first_name, u.last_name FROM exam_attempts a
+               JOIN web_users u ON u.id = a.user_id
+               WHERE a.exam_id = ? ORDER BY a.submitted_at""",
+            (exam_id,),
         ).fetchall()
 
     # ---------- обслуживание ----------

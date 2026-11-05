@@ -917,3 +917,196 @@ def test_delete_lesson_cascades_quiz(monkeypatch):
             assert (await resp.json())["lessons"] == []
 
     run(go())
+
+
+async def _setup_course_with_exam(client, sent, require_recording=False, admin_token="admintok"):
+    key = await _rotate_key(client, "teacher", admin_token)
+    teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
+                                                "teacher@example.com", "secret1", "teacher", key)
+    student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
+                                         "a@example.com", "secret1", "male")
+    t_teacher, t_student = teacher["token"], student["token"]
+
+    resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
+                             json={"code": "CS101", "title": "Введение"})
+    course_id = (await resp.json())["course"]["id"]
+    await client.post("/api/academics/enroll", headers=auth(t_student), json={"course_id": course_id})
+
+    resp = await client.post("/api/academics/exams", headers=auth(t_teacher), json={
+        "course_id": course_id, "title": "Рубежный контроль 1", "time_limit_minutes": 30,
+        "require_recording": require_recording,
+    })
+    exam_id = (await resp.json())["exam"]["id"]
+
+    await client.post("/api/academics/exam-questions", headers=auth(t_teacher), json={
+        "exam_id": exam_id, "text": "2 + 2 = ?", "options": ["3", "4", "5"], "correct_index": 1,
+    })
+    await client.post("/api/academics/exam-questions", headers=auth(t_teacher), json={
+        "exam_id": exam_id, "text": "Столица Казахстана?", "options": ["Алматы", "Астана"], "correct_index": 1,
+    })
+    return teacher, student, course_id, exam_id
+
+
+def test_exam_create_and_question_visibility(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            # Студент не создаёт экзамены
+            resp = await client.post("/api/academics/exams", headers=auth(t_student),
+                                     json={"course_id": course_id, "title": "Хак"})
+            assert resp.status == 403
+
+            resp = await client.get(f"/api/academics/courses/{course_id}/exams", headers=auth(t_student))
+            exams = (await resp.json())["exams"]
+            assert len(exams) == 1 and exams[0]["time_limit_minutes"] == 30
+
+            resp = await client.get(f"/api/academics/exams/{exam_id}/questions", headers=auth(t_student))
+            questions = (await resp.json())["questions"]
+            assert len(questions) == 2 and all("correct_index" not in q for q in questions)
+
+            resp = await client.get(f"/api/academics/exams/{exam_id}/questions", headers=auth(t_teacher))
+            assert all("correct_index" in q for q in (await resp.json())["questions"])
+
+    run(go())
+
+
+def test_exam_submit_grades_and_counts_tab_exits(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
+                "exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 3,
+            })
+            assert resp.status == 200
+            body = await resp.json()
+            assert body["score"] == 100.0 and body["tab_exit_count"] == 3
+
+            resp = await client.get("/api/academics/exams/my-attempt", headers=auth(t_student),
+                                     params={"exam_id": exam_id})
+            attempt = (await resp.json())["attempt"]
+            assert attempt["tab_exit_count"] == 3 and attempt["has_recording"] is False
+
+            resp = await client.get(f"/api/academics/exams/{exam_id}/attempts", headers=auth(t_teacher))
+            attempts = (await resp.json())["attempts"]
+            assert len(attempts) == 1 and attempts[0]["tab_exit_count"] == 3 and attempts[0]["first_name"] == "Аян"
+
+            # Пересдача перезаписывает попытку (новый tab_exit_count), а не плодит вторую
+            resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
+                "exam_id": exam_id, "answers": [0, 0], "tab_exit_count": 7,
+            })
+            assert (await resp.json())["tab_exit_count"] == 7
+            resp = await client.get(f"/api/academics/exams/{exam_id}/attempts", headers=auth(t_teacher))
+            assert len((await resp.json())["attempts"]) == 1
+
+            # Незаписанный не может сдать экзамен
+            outsider = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
+                                                   "c@example.com", "secret1", "female")
+            resp = await client.post("/api/academics/exams/submit", headers=auth(outsider["token"]),
+                                     json={"exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 0})
+            assert resp.status == 403
+
+    run(go())
+
+
+def test_exam_recording_required_and_access_controlled(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent, require_recording=True)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            # Без записи сдать нельзя, раз экзамен её требует
+            resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
+                "exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 0,
+            })
+            assert resp.status == 400
+
+            # Неподдерживаемый тип записи отклоняется
+            bad_recording = _file_payload("rec.avi", "video/x-msvideo", b"fake avi")
+            resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
+                "exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 0, "recording": bad_recording,
+            })
+            assert resp.status == 400
+
+            recording = _file_payload("screen.webm", "video/webm", b"fake webm bytes")
+            resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
+                "exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 2, "recording": recording,
+            })
+            assert resp.status == 200
+
+            resp = await client.get(f"/api/academics/exams/{exam_id}/attempts", headers=auth(t_teacher))
+            attempt_id = (await resp.json())["attempts"][0]["id"]
+
+            # Сам студент и преподаватель дисциплины могут скачать запись
+            resp = await client.get(f"/api/academics/exam-attempts/{attempt_id}/recording", headers=auth(t_student))
+            assert resp.status == 200 and await resp.read() == b"fake webm bytes"
+            resp = await client.get(f"/api/academics/exam-attempts/{attempt_id}/recording", headers=auth(t_teacher))
+            assert resp.status == 200
+
+            # Посторонний — нет
+            outsider = await _register_and_verify(client, sent, "Данияр", "Ким", "+77001110004",
+                                                   "d@example.com", "secret1", "male")
+            resp = await client.get(f"/api/academics/exam-attempts/{attempt_id}/recording", headers=auth(outsider["token"]))
+            assert resp.status == 403
+
+    run(go())
+
+
+def test_exam_question_validation_and_delete(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent)
+            t_teacher = teacher["token"]
+
+            resp = await client.post("/api/academics/exam-questions", headers=auth(t_teacher), json={
+                "exam_id": exam_id, "text": "Q?", "options": ["один"], "correct_index": 0,
+            })
+            assert resp.status == 400
+
+            resp = await client.get(f"/api/academics/exams/{exam_id}/questions", headers=auth(t_teacher))
+            questions = (await resp.json())["questions"]
+            assert len(questions) == 2
+
+            resp = await client.post("/api/academics/exam-questions/delete", headers=auth(t_teacher),
+                                     json={"question_id": questions[0]["id"]})
+            assert resp.status == 200
+            resp = await client.get(f"/api/academics/exams/{exam_id}/questions", headers=auth(t_teacher))
+            assert len((await resp.json())["questions"]) == 1
+
+    run(go())
+
+
+def test_delete_exam_cascades_attempts(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+
+            await client.post("/api/academics/exams/submit", headers=auth(t_student),
+                              json={"exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 0})
+
+            resp = await client.post("/api/academics/exams/delete", headers=auth(t_teacher), json={"exam_id": exam_id})
+            assert resp.status == 200
+
+            resp = await client.get(f"/api/academics/courses/{course_id}/exams", headers=auth(t_student))
+            assert (await resp.json())["exams"] == []
+
+    run(go())

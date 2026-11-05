@@ -186,6 +186,16 @@ python -m bot.main
 | POST | `/api/academics/quiz/submit` | `{"lesson_id", "answers": [индексы по порядку вопросов]}` — авто-проверка; повторное прохождение перезаписывает попытку, а не плодит новую |
 | GET | `/api/academics/quiz/my-attempt?lesson_id=<id>` | своя попытка (счёт, сколько верно) или `null` |
 | GET | `/api/academics/lessons/{id}/attempts` | результаты всех студентов по тесту — преподаватель дисциплины/админ |
+| GET | `/api/academics/courses/{id}/exams` | проктор-экзамены дисциплины — записанному студенту или преподавателю дисциплины/админу |
+| POST | `/api/academics/exams` | `{"course_id", "title", опц. "description", "time_limit_minutes", "require_recording"}` — создать экзамен (только `teacher`/`admin`) |
+| POST | `/api/academics/exams/delete` | `{"exam_id"}` — удалить экзамен вместе с вопросами и попытками |
+| POST | `/api/academics/exam-questions` | `{"exam_id", "text", "options": [...] (2-8 шт.), "correct_index"}` |
+| POST | `/api/academics/exam-questions/delete` | `{"question_id"}` |
+| GET | `/api/academics/exams/{id}/questions` | вопросы — студенту без `correct_index`, преподавателю/админу — с ним |
+| POST | `/api/academics/exams/submit` | `{"exam_id", "answers", "tab_exit_count", опц. "recording": {"filename","content_type" (video/webm\|video/mp4),"data"}}` — авто-проверка + подсчёт выходов за пределы окна (считает браузер) + необязательная запись экрана (до 50 МБ); если у экзамена `require_recording=true`, без записи не принимается (`400`) |
+| GET | `/api/academics/exams/my-attempt?exam_id=<id>` | своя попытка: счёт, число выходов, есть ли запись |
+| GET | `/api/academics/exams/{id}/attempts` | результаты всех студентов — преподаватель дисциплины/админ |
+| GET | `/api/academics/exam-attempts/{id}/recording` | скачать запись экрана конкретной попытки — сам сдававший студент или преподаватель дисциплины/админ |
 
 Проверить локально после `python -m bot.api_server`:
 
