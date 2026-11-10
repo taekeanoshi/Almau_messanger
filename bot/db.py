@@ -1,8 +1,9 @@
 """SQLite-хранилище: профили, жалобы, баны, статистика диалогов и записи на ивенты."""
+import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from bot.hikes import HikeStore
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS web_users (
     course        TEXT NOT NULL DEFAULT '',
     specialty     TEXT NOT NULL DEFAULT '',
     nickname      TEXT NOT NULL DEFAULT '',  -- анонимный ник, виден собеседнику вместо имени
-    role          TEXT NOT NULL DEFAULT 'student',  -- 'student' | 'teacher' | 'admin'
+    role          TEXT NOT NULL DEFAULT 'student',  -- 'student' | 'teacher' | 'registrar' | 'admin'
     banned        INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
 );
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS web_dialogs (
     user_a      INTEGER NOT NULL,
     user_b      INTEGER NOT NULL,
     mode        TEXT NOT NULL DEFAULT 'anonymous',  -- 'anonymous' (подбор по полу) | 'direct' (чат по ФИО)
+    event_id    TEXT,                               -- если собеседника искали «на ивент» — id ивента
     started_at  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS web_messages (
@@ -212,6 +214,7 @@ CREATE TABLE IF NOT EXISTS exams (
     description         TEXT NOT NULL DEFAULT '',
     time_limit_minutes  INTEGER,
     require_recording   INTEGER NOT NULL DEFAULT 0,  -- 1 = нужна запись экрана, чтобы начать
+    require_camera      INTEGER NOT NULL DEFAULT 0,  -- 1 = нужны снимки с веб-камеры во время экзамена
     created_by          INTEGER NOT NULL,
     created_at          TEXT NOT NULL
 );
@@ -234,15 +237,87 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
     tab_exit_count  INTEGER NOT NULL DEFAULT 0,  -- сколько раз студент ушёл с вкладки/окна во время теста
     recording_name  TEXT,
     recording_type  TEXT,
-    recording_data  BLOB,                        -- запись экрана (webm/mp4), необязательна
+    recording_data  BLOB,                        -- запись экрана одним файлом (старый способ; новый — exam_recording_chunks)
+    away_seconds    INTEGER NOT NULL DEFAULT 0,  -- сколько секунд суммарно студент был вне окна экзамена
+    started_at      TEXT,                        -- старт по часам сервера (из exam_sessions)
+    duration_seconds INTEGER,                    -- сколько реально длился экзамен, по часам сервера
     submitted_at    TEXT NOT NULL,
     UNIQUE(exam_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS exam_sessions (
+    exam_id     INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    started_at  TEXT NOT NULL,          -- время старта по часам сервера: от него считается лимит
+    PRIMARY KEY (exam_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS exam_snapshots (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    exam_id     INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    taken_at    TEXT NOT NULL,
+    data        BLOB NOT NULL           -- JPEG-кадр с веб-камеры
+);
+CREATE TABLE IF NOT EXISTS exam_recording_chunks (
+    exam_id     INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    seq         INTEGER NOT NULL,       -- порядковый номер куска записи экрана (webm)
+    data        BLOB NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (exam_id, user_id, seq)
+);
+CREATE TABLE IF NOT EXISTS web_reports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id INTEGER NOT NULL,
+    target_id   INTEGER NOT NULL,
+    dialog_id   TEXT NOT NULL DEFAULT '',
+    reason      TEXT NOT NULL DEFAULT '',
+    resolved    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS web_blocks (
+    user_id     INTEGER NOT NULL,       -- кто заблокировал
+    blocked_id  INTEGER NOT NULL,       -- кого
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, blocked_id)
+);
+CREATE TABLE IF NOT EXISTS web_dialog_reads (
+    dialog_id    TEXT NOT NULL,
+    user_id      INTEGER NOT NULL,
+    last_read_id INTEGER NOT NULL DEFAULT 0,  -- id последнего прочитанного сообщения
+    PRIMARY KEY (dialog_id, user_id)
+);
 """
+
+# Индексы создаём после миграций колонок: часть из них строится по колонкам, которых
+# в старой базе ещё может не быть.
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_web_messages_dialog ON web_messages (dialog_id, id);
+CREATE INDEX IF NOT EXISTS idx_web_dialogs_a ON web_dialogs (user_a);
+CREATE INDEX IF NOT EXISTS idx_web_dialogs_b ON web_dialogs (user_b);
+CREATE INDEX IF NOT EXISTS idx_web_sessions_user ON web_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_web_reports_target ON web_reports (target_id);
+CREATE INDEX IF NOT EXISTS idx_grades_user ON grades (user_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions (assignment_id);
+CREATE INDEX IF NOT EXISTS idx_exam_snapshots_owner ON exam_snapshots (exam_id, user_id);
+"""
+
+SESSION_TTL_DAYS = 30             # сколько живёт вход на сайте без повторного логина
+ANON_MESSAGES_TTL_DAYS = 30       # анонимные переписки старше этого удаляются
+EXAM_MEDIA_TTL_DAYS = 90          # записи экрана и снимки камеры с экзаменов старше этого удаляются
+UNVERIFIED_TTL_DAYS = 2           # аккаунты, не подтвердившие почту за это время, удаляются
+
+
+def hash_token(token: str) -> str:
+    """Токены сессий лежат в БД только в виде SHA-256: утечка базы не даёт войти под чужим аккаунтом."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _days_ago(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
 
 
 class AttendanceLocked(Exception):
@@ -290,6 +365,15 @@ class Database:
             },
             "web_dialogs": {
                 "mode": "ALTER TABLE web_dialogs ADD COLUMN mode TEXT NOT NULL DEFAULT 'anonymous'",
+                "event_id": "ALTER TABLE web_dialogs ADD COLUMN event_id TEXT",
+            },
+            "exams": {
+                "require_camera": "ALTER TABLE exams ADD COLUMN require_camera INTEGER NOT NULL DEFAULT 0",
+            },
+            "exam_attempts": {
+                "away_seconds": "ALTER TABLE exam_attempts ADD COLUMN away_seconds INTEGER NOT NULL DEFAULT 0",
+                "started_at": "ALTER TABLE exam_attempts ADD COLUMN started_at TEXT",
+                "duration_seconds": "ALTER TABLE exam_attempts ADD COLUMN duration_seconds INTEGER",
             },
             "enrollments": {
                 "schedule_item_id": "ALTER TABLE enrollments ADD COLUMN schedule_item_id INTEGER",
@@ -304,6 +388,13 @@ class Database:
                 for column, sql in migrations.items():
                     if column not in existing:
                         self.conn.execute(sql)
+            # Раньше токены сессий лежали открытым текстом (43 символа urlsafe). Хешируем их
+            # на месте — у SHA-256 в hex длина 64, так что повторный запуск ничего не тронет,
+            # а уже вошедших пользователей не разлогинивает.
+            for row in self.conn.execute("SELECT token FROM web_sessions WHERE length(token) != 64").fetchall():
+                self.conn.execute("UPDATE OR REPLACE web_sessions SET token = ? WHERE token = ?",
+                                  (hash_token(row["token"]), row["token"]))
+        self.conn.executescript(INDEXES)
 
     # ---------- профиль ----------
 
@@ -388,6 +479,7 @@ class Database:
             "leads": q("SELECT COUNT(*) FROM site_leads"),
             "web_users": q("SELECT COUNT(*) FROM web_users"),
             "web_dialogs": q("SELECT COUNT(*) FROM web_dialogs"),
+            "web_event_dialogs": q("SELECT COUNT(*) FROM web_dialogs WHERE event_id IS NOT NULL"),
         }
 
     # ---------- ивенты ----------
@@ -485,21 +577,38 @@ class Database:
     def create_web_session(self, token: str, user_id: int) -> None:
         with self.conn:
             self.conn.execute("INSERT INTO web_sessions (token, user_id, created_at) VALUES (?, ?, ?)",
-                              (token, user_id, _now()))
+                              (hash_token(token), user_id, _now()))
 
     def web_session_user(self, token: str) -> int | None:
-        row = self.conn.execute("SELECT user_id FROM web_sessions WHERE token = ?", (token,)).fetchone()
+        """id пользователя по токену — только если сессия не старше SESSION_TTL_DAYS,
+        а аккаунт существует и не заблокирован."""
+        row = self.conn.execute(
+            """SELECT s.user_id FROM web_sessions s JOIN web_users u ON u.id = s.user_id
+               WHERE s.token = ? AND s.created_at >= ? AND u.banned = 0""",
+            (hash_token(token), _days_ago(SESSION_TTL_DAYS)),
+        ).fetchone()
         return row["user_id"] if row else None
 
     def delete_web_session(self, token: str) -> None:
         with self.conn:
-            self.conn.execute("DELETE FROM web_sessions WHERE token = ?", (token,))
+            self.conn.execute("DELETE FROM web_sessions WHERE token = ?", (hash_token(token),))
 
-    def create_web_dialog(self, dialog_id: str, user_a: int, user_b: int, mode: str = "anonymous") -> None:
+    def delete_web_sessions_for_user(self, user_id: int, except_token: str | None = None) -> None:
+        """Выход со всех устройств (например, после смены пароля); except_token — оставить текущую."""
+        with self.conn:
+            if except_token:
+                self.conn.execute("DELETE FROM web_sessions WHERE user_id = ? AND token != ?",
+                                  (user_id, hash_token(except_token)))
+            else:
+                self.conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
+
+    def create_web_dialog(self, dialog_id: str, user_a: int, user_b: int, mode: str = "anonymous",
+                           event_id: str | None = None) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT INTO web_dialogs (dialog_id, user_a, user_b, mode, started_at) VALUES (?, ?, ?, ?, ?)",
-                (dialog_id, user_a, user_b, mode, _now()),
+                """INSERT INTO web_dialogs (dialog_id, user_a, user_b, mode, event_id, started_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (dialog_id, user_a, user_b, mode, event_id, _now()),
             )
 
     def get_web_dialog(self, dialog_id: str) -> sqlite3.Row | None:
@@ -982,13 +1091,14 @@ class Database:
     # ---------- проктор-экзамены: подсчёт выходов за пределы окна + запись экрана ----------
 
     def create_exam(self, course_id: int, title: str, description: str, time_limit_minutes: int | None,
-                     require_recording: bool, created_by: int) -> int:
+                     require_recording: bool, created_by: int, require_camera: bool = False) -> int:
         with self.conn:
             cur = self.conn.execute(
                 """INSERT INTO exams (course_id, title, description, time_limit_minutes, require_recording,
-                                      created_by, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (course_id, title, description, time_limit_minutes, int(require_recording), created_by, _now()),
+                                      require_camera, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (course_id, title, description, time_limit_minutes, int(require_recording),
+                 int(require_camera), created_by, _now()),
             )
         return cur.lastrowid
 
@@ -1000,6 +1110,8 @@ class Database:
 
     def delete_exam(self, exam_id: int) -> None:
         with self.conn:
+            for table in ("exam_sessions", "exam_snapshots", "exam_recording_chunks"):
+                self.conn.execute(f"DELETE FROM {table} WHERE exam_id = ?", (exam_id,))
             self.conn.execute("DELETE FROM exam_attempts WHERE exam_id = ?", (exam_id,))
             self.conn.execute("DELETE FROM exam_questions WHERE exam_id = ?", (exam_id,))
             self.conn.execute("DELETE FROM exams WHERE id = ?", (exam_id,))
@@ -1027,36 +1139,117 @@ class Database:
 
     def submit_exam_attempt(self, exam_id: int, user_id: int, answers: list[int], tab_exit_count: int,
                              recording_name: str | None = None, recording_type: str | None = None,
-                             recording_data: bytes | None = None) -> dict:
+                             recording_data: bytes | None = None, away_seconds: int = 0) -> dict:
+        """Сохраняет попытку. Экзамен сдаётся один раз: повторная сдача затирает прежний
+        результат только если преподаватель сбросил попытку (reset_exam_attempt) — вызывающий
+        код обязан проверить get_exam_attempt до вызова. Правильные ответы наружу не отдаём:
+        иначе их можно было бы подсмотреть и пересдать на 100%."""
         questions = self.exam_questions_for_exam(exam_id)
-        results = []
         correct_count = 0
         for i, q in enumerate(questions):
             selected = answers[i] if i < len(answers) else None
-            is_correct = selected == q["correct_index"]
-            if is_correct:
+            if selected == q["correct_index"]:
                 correct_count += 1
-            results.append({"question_id": q["id"], "text": q["text"], "options": json.loads(q["options"]),
-                             "selected": selected, "correct_index": q["correct_index"], "is_correct": is_correct})
         total = len(questions)
         score = (correct_count / total * 100) if total else 0.0
+
+        session = self.get_exam_session(exam_id, user_id)
+        started_at = session["started_at"] if session else None
+        submitted_at = _now()
+        duration = None
+        if started_at:
+            duration = int((datetime.fromisoformat(submitted_at) - datetime.fromisoformat(started_at)).total_seconds())
         with self.conn:
             self.conn.execute(
                 """INSERT INTO exam_attempts (exam_id, user_id, answers, correct_count, total_count, score,
                                               tab_exit_count, recording_name, recording_type, recording_data,
-                                              submitted_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                              away_seconds, started_at, duration_seconds, submitted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(exam_id, user_id) DO UPDATE SET
                        answers = excluded.answers, correct_count = excluded.correct_count,
                        total_count = excluded.total_count, score = excluded.score,
                        tab_exit_count = excluded.tab_exit_count, recording_name = excluded.recording_name,
                        recording_type = excluded.recording_type, recording_data = excluded.recording_data,
-                       submitted_at = excluded.submitted_at""",
+                       away_seconds = excluded.away_seconds, started_at = excluded.started_at,
+                       duration_seconds = excluded.duration_seconds, submitted_at = excluded.submitted_at""",
                 (exam_id, user_id, json.dumps(answers), correct_count, total, score, tab_exit_count,
-                 recording_name, recording_type, recording_data, _now()),
+                 recording_name, recording_type, recording_data, away_seconds, started_at, duration, submitted_at),
             )
         return {"correct_count": correct_count, "total_count": total, "score": score,
-                "tab_exit_count": tab_exit_count, "results": results}
+                "tab_exit_count": tab_exit_count, "away_seconds": away_seconds, "duration_seconds": duration}
+
+    # ---------- сеанс экзамена: старт по часам сервера, снимки камеры, запись экрана кусками ----------
+
+    def start_exam_session(self, exam_id: int, user_id: int) -> str:
+        """Идемпотентно: перезагрузка страницы не обнуляет таймер — время старта остаётся первым."""
+        with self.conn:
+            self.conn.execute("INSERT OR IGNORE INTO exam_sessions (exam_id, user_id, started_at) VALUES (?, ?, ?)",
+                              (exam_id, user_id, _now()))
+        return self.get_exam_session(exam_id, user_id)["started_at"]
+
+    def get_exam_session(self, exam_id: int, user_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM exam_sessions WHERE exam_id = ? AND user_id = ?", (exam_id, user_id)
+        ).fetchone()
+
+    def unfinished_exam_sessions(self, exam_id: int) -> list[sqlite3.Row]:
+        """Кто начал экзамен, но так и не сдал — преподаватель должен это видеть."""
+        return self.conn.execute(
+            """SELECT s.*, u.first_name, u.last_name FROM exam_sessions s
+               JOIN web_users u ON u.id = s.user_id
+               WHERE s.exam_id = ? AND NOT EXISTS (
+                   SELECT 1 FROM exam_attempts a WHERE a.exam_id = s.exam_id AND a.user_id = s.user_id)
+               ORDER BY s.started_at""",
+            (exam_id,),
+        ).fetchall()
+
+    def add_exam_snapshot(self, exam_id: int, user_id: int, data: bytes) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO exam_snapshots (exam_id, user_id, taken_at, data) VALUES (?, ?, ?, ?)",
+                (exam_id, user_id, _now(), data),
+            )
+        return cur.lastrowid
+
+    def count_exam_snapshots(self, exam_id: int, user_id: int) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM exam_snapshots WHERE exam_id = ? AND user_id = ?", (exam_id, user_id)
+        ).fetchone()[0]
+
+    def exam_snapshots_meta(self, exam_id: int, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT id, taken_at FROM exam_snapshots WHERE exam_id = ? AND user_id = ? ORDER BY id",
+            (exam_id, user_id),
+        ).fetchall()
+
+    def get_exam_snapshot(self, snapshot_id: int) -> sqlite3.Row | None:
+        return self.conn.execute("SELECT * FROM exam_snapshots WHERE id = ?", (snapshot_id,)).fetchone()
+
+    def add_exam_recording_chunk(self, exam_id: int, user_id: int, seq: int, data: bytes) -> None:
+        with self.conn:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO exam_recording_chunks (exam_id, user_id, seq, data, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (exam_id, user_id, seq, data, _now()),
+            )
+
+    def exam_recording_size(self, exam_id: int, user_id: int) -> int:
+        return self.conn.execute(
+            "SELECT COALESCE(SUM(length(data)), 0) FROM exam_recording_chunks WHERE exam_id = ? AND user_id = ?",
+            (exam_id, user_id),
+        ).fetchone()[0]
+
+    def exam_recording_chunks(self, exam_id: int, user_id: int) -> list[bytes]:
+        return [row["data"] for row in self.conn.execute(
+            "SELECT data FROM exam_recording_chunks WHERE exam_id = ? AND user_id = ? ORDER BY seq",
+            (exam_id, user_id),
+        )]
+
+    def reset_exam_attempt(self, exam_id: int, user_id: int) -> None:
+        """Преподаватель разрешает пересдачу: стираем попытку, сеанс и все записи с неё."""
+        with self.conn:
+            for table in ("exam_attempts", "exam_sessions", "exam_snapshots", "exam_recording_chunks"):
+                self.conn.execute(f"DELETE FROM {table} WHERE exam_id = ? AND user_id = ?", (exam_id, user_id))
 
     def get_exam_attempt(self, exam_id: int, user_id: int) -> sqlite3.Row | None:
         return self.conn.execute(
@@ -1067,16 +1260,302 @@ class Database:
         return self.conn.execute("SELECT * FROM exam_attempts WHERE id = ?", (attempt_id,)).fetchone()
 
     def exam_attempts_for_exam(self, exam_id: int) -> list[sqlite3.Row]:
+        """Без самих BLOB-ов записи: has_recording / snapshot_count считаются в SQL,
+        чтобы список результатов не тянул из базы десятки мегабайт видео."""
         return self.conn.execute(
-            """SELECT a.*, u.first_name, u.last_name FROM exam_attempts a
-               JOIN web_users u ON u.id = a.user_id
+            """SELECT a.id, a.exam_id, a.user_id, a.correct_count, a.total_count, a.score,
+                      a.tab_exit_count, a.away_seconds, a.started_at, a.duration_seconds, a.submitted_at,
+                      u.first_name, u.last_name,
+                      (a.recording_data IS NOT NULL OR EXISTS (
+                          SELECT 1 FROM exam_recording_chunks c
+                          WHERE c.exam_id = a.exam_id AND c.user_id = a.user_id)) AS has_recording,
+                      (SELECT COUNT(*) FROM exam_snapshots s
+                        WHERE s.exam_id = a.exam_id AND s.user_id = a.user_id) AS snapshot_count
+               FROM exam_attempts a JOIN web_users u ON u.id = a.user_id
                WHERE a.exam_id = ? ORDER BY a.submitted_at""",
             (exam_id,),
         ).fetchall()
 
+    # ---------- аккаунт: профиль, пароль, блокировка, удаление ----------
+
+    PROFILE_FIELDS = ("first_name", "last_name", "nickname", "course", "specialty")
+
+    def update_web_profile(self, user_id: int, fields: dict[str, str]) -> None:
+        updates = {k: v for k, v in fields.items() if k in self.PROFILE_FIELDS}
+        if not updates:
+            return
+        assignments = ", ".join(f"{column} = ?" for column in updates)
+        with self.conn:
+            self.conn.execute(f"UPDATE web_users SET {assignments} WHERE id = ?", (*updates.values(), user_id))
+
+    def set_web_password(self, user_id: int, password_hash: str, password_salt: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE web_users SET password_hash = ?, password_salt = ? WHERE id = ?",
+                              (password_hash, password_salt, user_id))
+
+    def set_web_user_banned(self, user_id: int, banned: bool) -> bool:
+        """Блокировка сразу выкидывает со всех устройств — иначе забаненный остаётся в чате до выхода."""
+        with self.conn:
+            cur = self.conn.execute("UPDATE web_users SET banned = ? WHERE id = ?", (int(banned), user_id))
+            if banned:
+                self.conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
+        return cur.rowcount > 0
+
+    def set_web_user_role_by_id(self, user_id: int, role: str) -> bool:
+        with self.conn:
+            cur = self.conn.execute("UPDATE web_users SET role = ? WHERE id = ?", (role, user_id))
+        return cur.rowcount > 0
+
+    def count_web_admins(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM web_users WHERE role = 'admin' AND banned = 0").fetchone()[0]
+
+    def list_web_users(self, query: str = "", limit: int = 200) -> list[sqlite3.Row]:
+        """Для админ-панели: все аккаунты, фильтр по имени/почте/телефону (в Python — из-за кириллицы)."""
+        rows = self.conn.execute("SELECT * FROM web_users ORDER BY id DESC").fetchall()
+        q = query.strip().casefold()
+        if q:
+            rows = [r for r in rows
+                    if q in f"{r['first_name']} {r['last_name']} {r['email'] or ''} {r['phone'] or ''}".casefold()]
+        return rows[:limit]
+
+    def delete_web_account(self, user_id: int) -> None:
+        """Полное удаление аккаунта и всего, что с ним связано: переписки (вместе с диалогами,
+        где он участвовал), фото, оценки, сдачи, попытки тестов, записи экзаменов, отметки на
+        ивентах, записи на походы. Дисциплины, которые он вёл, остаются без преподавателя."""
+        row = self.get_web_user(user_id)
+        if row is None:
+            return
+        with self.conn:
+            dialog_ids = [r["dialog_id"] for r in self.conn.execute(
+                "SELECT dialog_id FROM web_dialogs WHERE user_a = ? OR user_b = ?", (user_id, user_id))]
+            for dialog_id in dialog_ids:
+                for table in ("web_messages", "web_photos", "web_dialog_reads", "web_dialogs"):
+                    self.conn.execute(f"DELETE FROM {table} WHERE dialog_id = ?", (dialog_id,))
+            for table in ("web_sessions", "enrollments", "grades", "attendance", "submissions", "quiz_attempts",
+                          "exam_attempts", "exam_sessions", "exam_snapshots", "exam_recording_chunks",
+                          "web_dialog_reads"):
+                self.conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+            self.conn.execute("DELETE FROM web_blocks WHERE user_id = ? OR blocked_id = ?", (user_id, user_id))
+            self.conn.execute("DELETE FROM web_reports WHERE reporter_id = ? OR target_id = ?", (user_id, user_id))
+            self.conn.execute("DELETE FROM web_otp_codes WHERE email = ?", (row["email"],))
+            self.conn.execute("DELETE FROM event_going WHERE user_id = ?", (f"webuser:{user_id}",))
+            self.conn.execute("DELETE FROM hike_signups WHERE user_id = ?", (-user_id,))
+            self.conn.execute("UPDATE courses SET teacher_id = NULL WHERE teacher_id = ?", (user_id,))
+            self.conn.execute("UPDATE schedule_items SET teacher_id = NULL WHERE teacher_id = ?", (user_id,))
+            self.conn.execute("DELETE FROM web_users WHERE id = ?", (user_id,))
+
+    # ---------- модерация: жалобы и блокировки ----------
+
+    def add_web_report(self, reporter_id: int, target_id: int, dialog_id: str, reason: str) -> int:
+        """Сохраняет жалобу. Возвращает, сколько РАЗНЫХ людей уже пожаловались на этого пользователя."""
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO web_reports (reporter_id, target_id, dialog_id, reason, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (reporter_id, target_id, dialog_id, reason, _now()),
+            )
+        return self.conn.execute(
+            "SELECT COUNT(DISTINCT reporter_id) FROM web_reports WHERE target_id = ?", (target_id,)
+        ).fetchone()[0]
+
+    def web_reports(self, only_open: bool = True, limit: int = 100) -> list[sqlite3.Row]:
+        where = "WHERE r.resolved = 0" if only_open else ""
+        return self.conn.execute(
+            f"""SELECT r.*, a.first_name AS reporter_first, a.last_name AS reporter_last,
+                       b.first_name AS target_first, b.last_name AS target_last, b.banned AS target_banned,
+                       (SELECT COUNT(DISTINCT x.reporter_id) FROM web_reports x
+                         WHERE x.target_id = r.target_id) AS target_reporters
+                FROM web_reports r
+                LEFT JOIN web_users a ON a.id = r.reporter_id
+                LEFT JOIN web_users b ON b.id = r.target_id
+                {where} ORDER BY r.id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+
+    def resolve_web_report(self, report_id: int) -> bool:
+        with self.conn:
+            cur = self.conn.execute("UPDATE web_reports SET resolved = 1 WHERE id = ?", (report_id,))
+        return cur.rowcount > 0
+
+    def dialog_has_report(self, dialog_id: str) -> bool:
+        return self.conn.execute(
+            "SELECT 1 FROM web_reports WHERE dialog_id = ? LIMIT 1", (dialog_id,)
+        ).fetchone() is not None
+
+    def recent_dialog_messages(self, dialog_id: str, limit: int = 30) -> list[sqlite3.Row]:
+        rows = self.conn.execute(
+            "SELECT * FROM web_messages WHERE dialog_id = ? ORDER BY id DESC LIMIT ?", (dialog_id, limit)
+        ).fetchall()
+        return rows[::-1]
+
+    def add_web_block(self, user_id: int, blocked_id: int) -> None:
+        with self.conn:
+            self.conn.execute("INSERT OR IGNORE INTO web_blocks (user_id, blocked_id, created_at) VALUES (?, ?, ?)",
+                              (user_id, blocked_id, _now()))
+
+    def remove_web_block(self, user_id: int, blocked_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM web_blocks WHERE user_id = ? AND blocked_id = ?", (user_id, blocked_id))
+
+    def blocked_either_way(self, user_id: int) -> set[int]:
+        """Все, с кем этого пользователя нельзя сводить: кого заблокировал он и кто заблокировал его."""
+        rows = self.conn.execute(
+            "SELECT user_id, blocked_id FROM web_blocks WHERE user_id = ? OR blocked_id = ?", (user_id, user_id)
+        ).fetchall()
+        return {r["blocked_id"] if r["user_id"] == user_id else r["user_id"] for r in rows}
+
+    def blocks_of(self, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT u.id, u.first_name, u.last_name FROM web_blocks b
+               JOIN web_users u ON u.id = b.blocked_id WHERE b.user_id = ? ORDER BY b.created_at DESC""",
+            (user_id,),
+        ).fetchall()
+
+    # ---------- прямые чаты: прочитанное и сводка ----------
+
+    def mark_dialog_read(self, dialog_id: str, user_id: int, last_read_id: int) -> None:
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO web_dialog_reads (dialog_id, user_id, last_read_id) VALUES (?, ?, ?)
+                   ON CONFLICT(dialog_id, user_id) DO UPDATE SET
+                       last_read_id = MAX(last_read_id, excluded.last_read_id)""",
+                (dialog_id, user_id, last_read_id),
+            )
+
+    def direct_dialogs_overview(self, user_id: int) -> list[dict]:
+        """Прямые диалоги пользователя: последнее сообщение и число непрочитанных, свежие — сверху."""
+        out = []
+        for dialog in self.list_direct_dialogs(user_id):
+            dialog_id = dialog["dialog_id"]
+            last = self.conn.execute(
+                "SELECT * FROM web_messages WHERE dialog_id = ? ORDER BY id DESC LIMIT 1", (dialog_id,)
+            ).fetchone()
+            read = self.conn.execute(
+                "SELECT last_read_id FROM web_dialog_reads WHERE dialog_id = ? AND user_id = ?", (dialog_id, user_id)
+            ).fetchone()
+            unread = self.conn.execute(
+                "SELECT COUNT(*) FROM web_messages WHERE dialog_id = ? AND id > ? AND sender_id != ?",
+                (dialog_id, read["last_read_id"] if read else 0, user_id),
+            ).fetchone()[0]
+            out.append({
+                "dialog_id": dialog_id,
+                "partner_id": dialog["user_b"] if dialog["user_a"] == user_id else dialog["user_a"],
+                "last": last, "unread": unread,
+                "last_at": last["created_at"] if last else dialog["started_at"],
+            })
+        out.sort(key=lambda d: d["last_at"], reverse=True)
+        return out
+
+    def unread_direct_count(self, user_id: int) -> int:
+        return sum(d["unread"] for d in self.direct_dialogs_overview(user_id))
+
+    # ---------- сводка «Сегодня» ----------
+
+    def pending_assignments_for_student(self, user_id: int) -> list[sqlite3.Row]:
+        """Задания по моим дисциплинам, которые я ещё не сдал: сначала с ближайшим сроком."""
+        return self.conn.execute(
+            """SELECT a.id, a.course_id, a.title, a.due_at, c.code AS course_code, c.title AS course_title
+               FROM enrollments e
+               JOIN assignments a ON a.course_id = e.course_id
+               JOIN courses c ON c.id = a.course_id
+               WHERE e.user_id = ? AND NOT EXISTS (
+                   SELECT 1 FROM submissions s WHERE s.assignment_id = a.id AND s.user_id = e.user_id)
+               ORDER BY a.due_at IS NULL, a.due_at, a.id""",
+            (user_id,),
+        ).fetchall()
+
+    def pending_exams_for_student(self, user_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT x.id, x.course_id, x.title, x.time_limit_minutes, c.code AS course_code
+               FROM enrollments e
+               JOIN exams x ON x.course_id = e.course_id
+               JOIN courses c ON c.id = x.course_id
+               WHERE e.user_id = ? AND NOT EXISTS (
+                   SELECT 1 FROM exam_attempts a WHERE a.exam_id = x.id AND a.user_id = e.user_id)
+               ORDER BY x.id""",
+            (user_id,),
+        ).fetchall()
+
+    def recent_grades_for_student(self, user_id: int, limit: int = 5) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT g.*, c.code AS course_code, c.title AS course_title FROM grades g
+               JOIN courses c ON c.id = g.course_id
+               WHERE g.user_id = ? ORDER BY g.created_at DESC, g.id DESC LIMIT ?""",
+            (user_id, limit),
+        ).fetchall()
+
+    def ungraded_submissions_count(self, teacher_id: int, is_admin: bool = False) -> int:
+        where = "" if is_admin else "AND c.teacher_id = ?"
+        args = () if is_admin else (teacher_id,)
+        return self.conn.execute(
+            f"""SELECT COUNT(*) FROM submissions s
+                JOIN assignments a ON a.id = s.assignment_id
+                JOIN courses c ON c.id = a.course_id
+                WHERE s.status = 'submitted' {where}""",
+            args,
+        ).fetchone()[0]
+
+    def events_going_for_web_user(self, user_id: int) -> list[str]:
+        return [r["event_id"] for r in self.conn.execute(
+            "SELECT event_id FROM event_going WHERE user_id = ?", (f"webuser:{user_id}",))]
+
     # ---------- обслуживание ----------
 
-    WEB_CHAT_TABLES = ("web_sessions", "web_otp_codes", "web_photos", "web_messages", "web_dialogs", "web_users")
+    def admin_overview(self) -> dict[str, int]:
+        q = lambda sql, *args: self.conn.execute(sql, args).fetchone()[0]  # noqa: E731
+        return {
+            "users": q("SELECT COUNT(*) FROM web_users"),
+            "students": q("SELECT COUNT(*) FROM web_users WHERE role = 'student'"),
+            "teachers": q("SELECT COUNT(*) FROM web_users WHERE role = 'teacher'"),
+            "registrars": q("SELECT COUNT(*) FROM web_users WHERE role = 'registrar'"),
+            "admins": q("SELECT COUNT(*) FROM web_users WHERE role = 'admin'"),
+            "banned": q("SELECT COUNT(*) FROM web_users WHERE banned = 1"),
+            "unverified": q("SELECT COUNT(*) FROM web_users WHERE email_verified = 0"),
+            "dialogs": q("SELECT COUNT(*) FROM web_dialogs"),
+            "messages": q("SELECT COUNT(*) FROM web_messages"),
+            "courses": q("SELECT COUNT(*) FROM courses"),
+            "open_reports": q("SELECT COUNT(*) FROM web_reports WHERE resolved = 0"),
+            "leads": q("SELECT COUNT(*) FROM site_leads"),
+        }
+
+    def purge_expired(self) -> dict[str, int]:
+        """Плановая очистка: брошенные регистрации, истёкшие сессии и коды, старые анонимные
+        переписки, старые записи экзаменов. Вызывается раз в час из фоновой задачи API (bot/api.py)."""
+        now = _now()
+        anon_cutoff = _days_ago(ANON_MESSAGES_TTL_DAYS)
+        media_cutoff = _days_ago(EXAM_MEDIA_TTL_DAYS)
+        counts: dict[str, int] = {}
+        stale = self.conn.execute(
+            "SELECT id FROM web_users WHERE email_verified = 0 AND created_at < ?", (_days_ago(UNVERIFIED_TTL_DAYS),)
+        ).fetchall()
+        for row in stale:
+            self.delete_web_account(row["id"])
+        counts["unverified_accounts"] = len(stale)
+        with self.conn:
+            counts["sessions"] = self.conn.execute(
+                "DELETE FROM web_sessions WHERE created_at < ?", (_days_ago(SESSION_TTL_DAYS),)).rowcount
+            counts["otp_codes"] = self.conn.execute(
+                "DELETE FROM web_otp_codes WHERE expires_at < ?", (now,)).rowcount
+            # Анонимные диалоги с открытой жалобой не трогаем — они нужны модератору как доказательство.
+            old_anonymous = """SELECT dialog_id FROM web_dialogs d
+                               WHERE d.mode = 'anonymous' AND d.started_at < ? AND NOT EXISTS (
+                                   SELECT 1 FROM web_reports r WHERE r.dialog_id = d.dialog_id AND r.resolved = 0)"""
+            counts["anonymous_messages"] = self.conn.execute(
+                f"DELETE FROM web_messages WHERE dialog_id IN ({old_anonymous})", (anon_cutoff,)).rowcount
+            counts["anonymous_photos"] = self.conn.execute(
+                f"DELETE FROM web_photos WHERE dialog_id IN ({old_anonymous})", (anon_cutoff,)).rowcount
+            counts["exam_snapshots"] = self.conn.execute(
+                "DELETE FROM exam_snapshots WHERE taken_at < ?", (media_cutoff,)).rowcount
+            counts["exam_recording_chunks"] = self.conn.execute(
+                "DELETE FROM exam_recording_chunks WHERE created_at < ?", (media_cutoff,)).rowcount
+            counts["exam_recordings"] = self.conn.execute(
+                """UPDATE exam_attempts SET recording_data = NULL, recording_name = NULL, recording_type = NULL
+                   WHERE recording_data IS NOT NULL AND submitted_at < ?""", (media_cutoff,)).rowcount
+        return counts
+
+
+    WEB_CHAT_TABLES = ("web_sessions", "web_otp_codes", "web_photos", "web_messages", "web_dialog_reads",
+                       "web_reports", "web_blocks", "web_dialogs", "web_users")
 
     def reset_web_chat_data(self) -> dict[str, int]:
         """Полностью стирает аккаунты, диалоги, сообщения, фото и коды из «Анонимного чата» —

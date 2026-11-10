@@ -56,7 +56,7 @@ async def run_api(bot: Bot, db: Database, content: Content, config: Config) -> N
     app = build_app(db, content, bot=bot, admin_ids=config.admin_ids,
                      cors_origin=config.cors_origin, admin_token=config.admin_token,
                      brevo_api_key=config.brevo_api_key, brevo_sender_email=config.brevo_sender_email,
-                     brevo_sender_name=config.brevo_sender_name)
+                     brevo_sender_name=config.brevo_sender_name, reports_to_ban=config.reports_to_ban)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=config.port)

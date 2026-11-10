@@ -29,26 +29,32 @@ Oqulabs) — Platonus-стиль.
   студента на другой день (choose_schedule от чужого имени). Оценки и посещаемость не трогает.
 - admin — может всё то же, что teacher и registrar вместе, по любой дисциплине.
 
-Проктор-экзамены — отдельная сущность от видеоуроков с мини-тестом: это специально для
-серьёзных рубежек/экзаменов, а не для лёгкой самопроверки после видео. Подсчёт выходов
-(tab_exit_count) считает браузер на фронтенде (site/index.html) по событиям потери
-фокуса окна и шлёт готовое число при сдаче — сервер ему доверяет, отдельный «сеанс»
-с постоянным пингом не нужен. Запись экрана — через getDisplayMedia()/MediaRecorder
-в браузере; раз это WebRTC API, сам браузер обязательно спросит у студента разрешение
-явным системным диалогом — без этого записи просто не будет, так что согласие по факту
-обеспечено на уровне платформы, а не доверием на слово. Запись хранится тем же способом,
-что и файлы заданий/уроков — BLOB прямо в БД, только с большим лимитом размера
-(MAX_RECORDING_BYTES). Это реально раздувает базу на Railway при частом использовании —
-старые записи стоит иногда чистить вручную.
+Проктор-экзамены — отдельная сущность от видеоуроков с мини-тестом: это для серьёзных
+рубежек/экзаменов, а не для лёгкой самопроверки после видео. Как устроена честность:
+- экзамен сдаётся один раз; вопросы студент получает только при старте (POST /exams/start),
+  а правильные ответы после сдачи не показываются — иначе их можно было бы подсмотреть
+  и пересдать на 100%. Разрешить пересдачу может только преподаватель (сброс попытки);
+- время старта фиксирует сервер, лимит считается от него: подкрутить часы в браузере или
+  перезагрузить страницу бесполезно. Сдача после лимита принимается (чтобы студент не
+  потерял ответы из-за связи), но помечается преподавателю как просроченная;
+- подсчёт выходов (tab_exit_count) и время вне окна (away_seconds) считает браузер по
+  потере фокуса и шлёт при сдаче — сервер ему доверяет;
+- запись экрана (getDisplayMedia/MediaRecorder) уходит на сервер кусками по ходу экзамена
+  (exam_recording_chunks), снимки с веб-камеры — по одному кадру (exam_snapshots). Раз это
+  API браузера, он сам спрашивает у студента разрешение системным диалогом — без согласия
+  записи не будет. Записи и снимки старше EXAM_MEDIA_TTL_DAYS удаляются автоматически
+  (db.purge_expired), чтобы не раздувать базу и не хранить видео студентов вечно.
 """
 import base64
 import json
 import re
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from aiohttp import web
 
 from bot.db import AttendanceLocked, Database
-from bot.web_chat import read_json_body, require_session
+from bot.web_chat import read_json_body, require_session, sniff_image_type
 
 MAX_CODE_LEN = 20
 MAX_TITLE_LEN = 200
@@ -87,9 +93,24 @@ MAX_OPTIONS = 8
 
 MAX_EXAM_TITLE_LEN = 200
 MAX_RECORDING_NAME_LEN = 150
-MAX_RECORDING_BYTES = 50 * 1024 * 1024  # запись экрана — тяжелее документов, но не безгранично
+MAX_RECORDING_BYTES = 150 * 1024 * 1024       # вся запись экрана одной попытки (сумма кусков)
+MAX_RECORDING_CHUNK_BYTES = 8 * 1024 * 1024   # один кусок записи — уходит отдельным запросом
+MAX_RECORDING_CHUNKS = 5000
 RECORDING_CONTENT_TYPES = {"video/webm", "video/mp4"}
+MAX_SNAPSHOT_BYTES = 300 * 1024               # один кадр с веб-камеры (JPEG)
+MAX_SNAPSHOTS = 600                           # кадров на попытку: раз в 20 секунд хватает на 3+ часа
 MAX_TAB_EXIT_COUNT = 100_000  # защита от мусорного числа с клиента, не настоящий лимит попыток
+MAX_AWAY_SECONDS = 24 * 60 * 60
+LATE_GRACE_SECONDS = 60       # запас на отправку ответов после истечения лимита времени
+
+
+def _attachment(body: bytes, content_type: str, filename: str) -> web.Response:
+    """Отдаёт файл на скачивание. Имя — и ASCII-вариант, и UTF-8 (RFC 5987): заголовки HTTP
+    не переносят кириллицу напрямую, а кавычки/переводы строк в имени ломали бы заголовок."""
+    filename = filename or "file"
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
+    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename, safe='')}"
+    return web.Response(body=body, content_type=content_type, headers={"Content-Disposition": disposition})
 
 
 def _require_user(db: Database, user_id: int):
@@ -630,8 +651,7 @@ async def assignment_file(request: web.Request) -> web.Response:
     if assignment is None or assignment["file_data"] is None:
         raise web.HTTPNotFound(reason="file not found")
     _require_enrolled_or_manager(db, user_id, assignment["course_id"])
-    return web.Response(body=assignment["file_data"], content_type=assignment["file_type"],
-                         headers={"Content-Disposition": f'attachment; filename="{assignment["file_name"]}"'})
+    return _attachment(assignment["file_data"], assignment["file_type"], assignment["file_name"])
 
 
 async def submit_assignment(request: web.Request) -> web.Response:
@@ -693,8 +713,7 @@ async def submission_file(request: web.Request) -> web.Response:
     is_manager = user["role"] == "admin" or (user["role"] == "teacher" and course["teacher_id"] == user_id)
     if submission["user_id"] != user_id and not is_manager:
         raise web.HTTPForbidden(reason="not allowed")
-    return web.Response(body=submission["file_data"], content_type=submission["file_type"],
-                         headers={"Content-Disposition": f'attachment; filename="{submission["file_name"]}"'})
+    return _attachment(submission["file_data"], submission["file_type"], submission["file_name"])
 
 
 async def grade_submission(request: web.Request) -> web.Response:
@@ -779,8 +798,7 @@ async def lesson_file(request: web.Request) -> web.Response:
     if lesson is None or lesson["file_data"] is None:
         raise web.HTTPNotFound(reason="file not found")
     _require_enrolled_or_manager(db, user_id, lesson["course_id"])
-    return web.Response(body=lesson["file_data"], content_type=lesson["file_type"],
-                         headers={"Content-Disposition": f'attachment; filename="{lesson["file_name"]}"'})
+    return _attachment(lesson["file_data"], lesson["file_type"], lesson["file_name"])
 
 
 def _validate_options(data: dict) -> tuple[str, list[str], int]:
@@ -913,7 +931,35 @@ def _public_exam(row) -> dict:
         "id": row["id"], "course_id": row["course_id"], "title": row["title"],
         "description": row["description"], "time_limit_minutes": row["time_limit_minutes"],
         "require_recording": bool(row["require_recording"]),
+        "require_camera": bool(row["require_camera"]),
     }
+
+
+def _is_course_manager(db: Database, user_id: int, course_id: int) -> bool:
+    user = _require_user(db, user_id)
+    course = _require_course(db, course_id)
+    return user["role"] == "admin" or (user["role"] == "teacher" and course["teacher_id"] == user_id)
+
+
+def _exam_or_404(db: Database, exam_id: int):
+    exam = db.get_exam(exam_id)
+    if exam is None:
+        raise web.HTTPNotFound(reason="exam not found")
+    return exam
+
+
+def _seconds_left(exam, started_at: str) -> int | None:
+    """Сколько секунд осталось до конца экзамена по часам сервера; None — лимита нет."""
+    if not exam["time_limit_minutes"]:
+        return None
+    deadline = datetime.fromisoformat(started_at) + timedelta(minutes=exam["time_limit_minutes"])
+    return max(0, int((deadline - datetime.now(timezone.utc)).total_seconds()))
+
+
+def _is_late(exam, duration_seconds: int | None) -> bool:
+    if not exam["time_limit_minutes"] or duration_seconds is None:
+        return False
+    return duration_seconds > exam["time_limit_minutes"] * 60 + LATE_GRACE_SECONDS
 
 
 async def list_exams(request: web.Request) -> web.Response:
@@ -945,11 +991,13 @@ async def create_exam(request: web.Request) -> web.Response:
             time_limit = int(time_limit)
         except (TypeError, ValueError):
             raise web.HTTPBadRequest(reason="time_limit_minutes must be an integer")
+        if not 1 <= time_limit <= 600:
+            raise web.HTTPBadRequest(reason="time_limit_minutes must be between 1 and 600")
     else:
         time_limit = None
-    require_recording = bool(data.get("require_recording"))
 
-    exam_id = db.create_exam(course_id, title, description, time_limit, require_recording, user_id)
+    exam_id = db.create_exam(course_id, title, description, time_limit, bool(data.get("require_recording")),
+                             user_id, require_camera=bool(data.get("require_camera")))
     return web.json_response({"ok": True, "exam": _public_exam(db.get_exam(exam_id))}, status=201)
 
 
@@ -958,9 +1006,7 @@ async def delete_exam(request: web.Request) -> web.Response:
     data = await read_json_body(request)
     db: Database = request.app["db"]
     exam_id = _int_field(data, "exam_id")
-    exam = db.get_exam(exam_id)
-    if exam is None:
-        raise web.HTTPNotFound(reason="exam not found")
+    exam = _exam_or_404(db, exam_id)
     _require_grade_manager(db, user_id, exam["course_id"])
     db.delete_exam(exam_id)
     return web.json_response({"ok": True})
@@ -971,9 +1017,7 @@ async def add_exam_question(request: web.Request) -> web.Response:
     data = await read_json_body(request)
     db: Database = request.app["db"]
     exam_id = _int_field(data, "exam_id")
-    exam = db.get_exam(exam_id)
-    if exam is None:
-        raise web.HTTPNotFound(reason="exam not found")
+    exam = _exam_or_404(db, exam_id)
     _require_grade_manager(db, user_id, exam["course_id"])
 
     text, options, correct_index = _validate_options(data)
@@ -995,34 +1039,113 @@ async def delete_exam_question(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+def _student_questions(db: Database, exam_id: int) -> list[dict]:
+    return [{"id": q["id"], "text": q["text"], "options": json.loads(q["options"])}
+            for q in db.exam_questions_for_exam(exam_id)]
+
+
 async def get_exam_questions(request: web.Request) -> web.Response:
+    """Вопросы с правильными ответами — только преподавателю этой дисциплины/админу (редактор).
+    Студент получает вопросы через POST /exams/start: до старта экзамена они ему не видны."""
     user_id = require_session(request)
     db: Database = request.app["db"]
     try:
         exam_id = int(request.match_info["exam_id"])
     except ValueError:
         raise web.HTTPBadRequest(reason="invalid exam id")
-    exam = db.get_exam(exam_id)
-    if exam is None:
-        raise web.HTTPNotFound(reason="exam not found")
-    is_manager = _require_enrolled_or_manager(db, user_id, exam["course_id"])
+    exam = _exam_or_404(db, exam_id)
+    if not _is_course_manager(db, user_id, exam["course_id"]):
+        raise web.HTTPForbidden(reason="start the exam to see its questions")
 
-    questions = []
-    for q in db.exam_questions_for_exam(exam_id):
-        item = {"id": q["id"], "text": q["text"], "options": json.loads(q["options"])}
-        if is_manager:
-            item["correct_index"] = q["correct_index"]
-        questions.append(item)
+    questions = [{"id": q["id"], "text": q["text"], "options": json.loads(q["options"]),
+                  "correct_index": q["correct_index"]} for q in db.exam_questions_for_exam(exam_id)]
     return web.json_response({"questions": questions, "exam": _public_exam(exam)})
 
 
-def _decode_optional_recording(data: dict) -> tuple[str, str, bytes] | tuple[None, None, None]:
+def _require_exam_taker(db: Database, user_id: int, exam):
+    if not db.is_enrolled(user_id, exam["course_id"]):
+        raise web.HTTPForbidden(reason="not enrolled in this course")
+    if db.get_exam_attempt(exam["id"], user_id) is not None:
+        raise web.HTTPConflict(reason="exam already submitted")
+
+
+def _require_running_session(db: Database, user_id: int, exam):
+    _require_exam_taker(db, user_id, exam)
+    session = db.get_exam_session(exam["id"], user_id)
+    if session is None:
+        raise web.HTTPConflict(reason="exam is not started")
+    return session
+
+
+async def start_exam(request: web.Request) -> web.Response:
+    """Студент начинает экзамен: сервер запоминает время старта (от него считается лимит —
+    часы браузера подкрутить бесполезно) и только теперь отдаёт вопросы. Повторный вызов
+    после перезагрузки страницы возвращает тот же сеанс с оставшимся временем."""
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    exam = _exam_or_404(db, _int_field(data, "exam_id"))
+    _require_exam_taker(db, user_id, exam)
+
+    started_at = db.start_exam_session(exam["id"], user_id)
+    return web.json_response({
+        "ok": True, "exam": _public_exam(exam), "questions": _student_questions(db, exam["id"]),
+        "started_at": started_at, "seconds_left": _seconds_left(exam, started_at),
+    })
+
+
+async def exam_snapshot(request: web.Request) -> web.Response:
+    """Кадр с веб-камеры во время экзамена. Кадры уходят по одному, пока экзамен идёт."""
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    exam = _exam_or_404(db, _int_field(data, "exam_id"))
+    _require_running_session(db, user_id, exam)
+
+    try:
+        image = base64.b64decode(str(data.get("data", "")), validate=True)
+    except Exception:
+        raise web.HTTPBadRequest(reason="invalid snapshot data")
+    if not image or len(image) > MAX_SNAPSHOT_BYTES or sniff_image_type(image) != "image/jpeg":
+        raise web.HTTPBadRequest(reason="snapshot must be a JPEG up to 300 KB")
+    if db.count_exam_snapshots(exam["id"], user_id) >= MAX_SNAPSHOTS:
+        return web.json_response({"ok": True, "stored": False})
+    db.add_exam_snapshot(exam["id"], user_id, image)
+    return web.json_response({"ok": True, "stored": True})
+
+
+async def exam_recording_chunk(request: web.Request) -> web.Response:
+    """Кусок записи экрана. Запись уходит на сервер частями по ходу экзамена, а не одним
+    огромным файлом в конце: длинный экзамен не упирается в лимит размера запроса, а при
+    обрыве связи пропадает только последний кусок, а не вся запись."""
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    exam = _exam_or_404(db, _int_field(data, "exam_id"))
+    _require_running_session(db, user_id, exam)
+
+    seq = _int_field(data, "seq")
+    if not 0 <= seq < MAX_RECORDING_CHUNKS:
+        raise web.HTTPBadRequest(reason="seq out of range")
+    try:
+        chunk = base64.b64decode(str(data.get("data", "")), validate=True)
+    except Exception:
+        raise web.HTTPBadRequest(reason="invalid chunk data")
+    if not chunk or len(chunk) > MAX_RECORDING_CHUNK_BYTES:
+        raise web.HTTPBadRequest(reason="chunk too large or empty")
+    if db.exam_recording_size(exam["id"], user_id) + len(chunk) > MAX_RECORDING_BYTES:
+        raise web.HTTPRequestEntityTooLarge(max_size=MAX_RECORDING_BYTES, actual_size=MAX_RECORDING_BYTES + 1)
+    db.add_exam_recording_chunk(exam["id"], user_id, seq, chunk)
+    return web.json_response({"ok": True})
+
+
+def _decode_optional_recording(data: dict) -> bytes | None:
+    """Запись целиком в теле сдачи — старый способ, оставлен для совместимости (короткие записи)."""
     file = data.get("recording")
     if not file:
-        return None, None, None
+        return None
     if not isinstance(file, dict):
         raise web.HTTPBadRequest(reason="recording must be an object with filename, content_type, data")
-    filename = re.sub(r'[\r\n"]', "_", str(file.get("filename", "")).strip())[:MAX_RECORDING_NAME_LEN] or "recording.webm"
     content_type = str(file.get("content_type", "")).strip().lower()
     if content_type not in RECORDING_CONTENT_TYPES:
         raise web.HTTPBadRequest(reason=f"content_type must be one of {sorted(RECORDING_CONTENT_TYPES)}")
@@ -1032,19 +1155,26 @@ def _decode_optional_recording(data: dict) -> tuple[str, str, bytes] | tuple[Non
         raise web.HTTPBadRequest(reason="invalid recording data")
     if not file_bytes or len(file_bytes) > MAX_RECORDING_BYTES:
         raise web.HTTPBadRequest(reason="recording too large or empty")
-    return filename, content_type, file_bytes
+    return file_bytes
+
+
+def _clamped_int(data: dict, key: str, maximum: int) -> int:
+    try:
+        value = int(data.get(key, 0))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason=f"{key} must be an integer")
+    return max(0, min(value, maximum))
 
 
 async def submit_exam(request: web.Request) -> web.Response:
+    """Сдача экзамена — один раз. Пересдать можно, только если преподаватель сбросил попытку.
+    Правильные ответы в ответе не возвращаются: студент видит только свой балл."""
     user_id = require_session(request)
     data = await read_json_body(request)
     db: Database = request.app["db"]
     exam_id = _int_field(data, "exam_id")
-    exam = db.get_exam(exam_id)
-    if exam is None:
-        raise web.HTTPNotFound(reason="exam not found")
-    if not db.is_enrolled(user_id, exam["course_id"]):
-        raise web.HTTPForbidden(reason="not enrolled in this course")
+    exam = _exam_or_404(db, exam_id)
+    _require_exam_taker(db, user_id, exam)
 
     answers = data.get("answers")
     if not isinstance(answers, list):
@@ -1053,33 +1183,43 @@ async def submit_exam(request: web.Request) -> web.Response:
         answers = [int(a) for a in answers]
     except (TypeError, ValueError):
         raise web.HTTPBadRequest(reason="answers must be integers")
+    tab_exit_count = _clamped_int(data, "tab_exit_count", MAX_TAB_EXIT_COUNT)
+    away_seconds = _clamped_int(data, "away_seconds", MAX_AWAY_SECONDS)
 
-    try:
-        tab_exit_count = int(data.get("tab_exit_count", 0))
-    except (TypeError, ValueError):
-        raise web.HTTPBadRequest(reason="tab_exit_count must be an integer")
-    tab_exit_count = max(0, min(tab_exit_count, MAX_TAB_EXIT_COUNT))
-
-    filename, content_type, recording_bytes = _decode_optional_recording(data)
-    if exam["require_recording"] and recording_bytes is None:
+    db.start_exam_session(exam_id, user_id)  # на случай сдачи без явного старта — сеанс всё равно нужен
+    legacy_recording = _decode_optional_recording(data)
+    if legacy_recording is not None:
+        db.add_exam_recording_chunk(exam_id, user_id, 0, legacy_recording)
+    if exam["require_recording"] and db.exam_recording_size(exam_id, user_id) == 0:
         raise web.HTTPBadRequest(reason="this exam requires a screen recording to submit")
+    if exam["require_camera"] and db.count_exam_snapshots(exam_id, user_id) == 0:
+        raise web.HTTPBadRequest(reason="this exam requires camera snapshots to submit")
 
-    result = db.submit_exam_attempt(exam_id, user_id, answers, tab_exit_count, filename, content_type, recording_bytes)
-    return web.json_response({"ok": True, **result})
+    result = db.submit_exam_attempt(exam_id, user_id, answers, tab_exit_count, away_seconds=away_seconds)
+    return web.json_response({"ok": True, **result, "late": _is_late(exam, result["duration_seconds"])})
 
 
 async def my_exam_attempt(request: web.Request) -> web.Response:
+    """Моя попытка (если сдал) или незавершённый сеанс (если начал и не сдал — можно продолжить)."""
     user_id = require_session(request)
     db: Database = request.app["db"]
     exam_id = _int_field(dict(request.query), "exam_id")
     attempt = db.get_exam_attempt(exam_id, user_id)
     if attempt is None:
-        return web.json_response({"attempt": None})
+        session, exam = db.get_exam_session(exam_id, user_id), db.get_exam(exam_id)
+        in_progress = None
+        if session is not None and exam is not None:
+            in_progress = {"started_at": session["started_at"],
+                           "seconds_left": _seconds_left(exam, session["started_at"])}
+        return web.json_response({"attempt": None, "in_progress": in_progress})
     return web.json_response({"attempt": {
         "correct_count": attempt["correct_count"], "total_count": attempt["total_count"],
         "score": attempt["score"], "tab_exit_count": attempt["tab_exit_count"],
-        "has_recording": attempt["recording_data"] is not None, "submitted_at": attempt["submitted_at"],
-    }})
+        "away_seconds": attempt["away_seconds"], "duration_seconds": attempt["duration_seconds"],
+        "has_recording": attempt["recording_data"] is not None or db.exam_recording_size(exam_id, user_id) > 0,
+        "snapshot_count": db.count_exam_snapshots(exam_id, user_id),
+        "submitted_at": attempt["submitted_at"],
+    }, "in_progress": None})
 
 
 async def exam_attempts(request: web.Request) -> web.Response:
@@ -1089,36 +1229,82 @@ async def exam_attempts(request: web.Request) -> web.Response:
         exam_id = int(request.match_info["exam_id"])
     except ValueError:
         raise web.HTTPBadRequest(reason="invalid exam id")
-    exam = db.get_exam(exam_id)
-    if exam is None:
-        raise web.HTTPNotFound(reason="exam not found")
+    exam = _exam_or_404(db, exam_id)
     _require_grade_manager(db, user_id, exam["course_id"])
 
     out = [{"id": a["id"], "user_id": a["user_id"], "first_name": a["first_name"], "last_name": a["last_name"],
             "correct_count": a["correct_count"], "total_count": a["total_count"], "score": a["score"],
-            "tab_exit_count": a["tab_exit_count"], "has_recording": a["recording_data"] is not None,
+            "tab_exit_count": a["tab_exit_count"], "away_seconds": a["away_seconds"],
+            "duration_seconds": a["duration_seconds"], "late": _is_late(exam, a["duration_seconds"]),
+            "has_recording": bool(a["has_recording"]), "snapshot_count": a["snapshot_count"],
             "submitted_at": a["submitted_at"]} for a in db.exam_attempts_for_exam(exam_id)]
-    return web.json_response({"attempts": out})
+    unfinished = [{"user_id": s["user_id"], "first_name": s["first_name"], "last_name": s["last_name"],
+                   "started_at": s["started_at"]} for s in db.unfinished_exam_sessions(exam_id)]
+    return web.json_response({"attempts": out, "unfinished": unfinished})
 
 
-async def exam_recording(request: web.Request) -> web.Response:
-    user_id = require_session(request)
+def _attempt_for_manager(request: web.Request, user_id: int, allow_owner: bool = False):
     db: Database = request.app["db"]
     try:
         attempt_id = int(request.match_info["attempt_id"])
     except ValueError:
         raise web.HTTPBadRequest(reason="invalid attempt id")
     attempt = db.get_exam_attempt_by_id(attempt_id)
-    if attempt is None or attempt["recording_data"] is None:
-        raise web.HTTPNotFound(reason="recording not found")
+    if attempt is None:
+        raise web.HTTPNotFound(reason="attempt not found")
     exam = db.get_exam(attempt["exam_id"])
-    user = _require_user(db, user_id)
-    course = _require_course(db, exam["course_id"])
-    is_manager = user["role"] == "admin" or (user["role"] == "teacher" and course["teacher_id"] == user_id)
-    if attempt["user_id"] != user_id and not is_manager:
+    is_owner = allow_owner and attempt["user_id"] == user_id
+    if not is_owner and not _is_course_manager(db, user_id, exam["course_id"]):
         raise web.HTTPForbidden(reason="not allowed")
-    return web.Response(body=attempt["recording_data"], content_type=attempt["recording_type"],
-                         headers={"Content-Disposition": f'attachment; filename="{attempt["recording_name"]}"'})
+    return attempt
+
+
+async def exam_recording(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    attempt = _attempt_for_manager(request, user_id, allow_owner=True)
+    chunks = db.exam_recording_chunks(attempt["exam_id"], attempt["user_id"])
+    if chunks:
+        return _attachment(b"".join(chunks), "video/webm", f"exam-{attempt['id']}.webm")
+    if attempt["recording_data"] is None:
+        raise web.HTTPNotFound(reason="recording not found")
+    return _attachment(attempt["recording_data"], attempt["recording_type"], attempt["recording_name"])
+
+
+async def exam_attempt_snapshots(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    attempt = _attempt_for_manager(request, user_id)
+    rows = db.exam_snapshots_meta(attempt["exam_id"], attempt["user_id"])
+    return web.json_response({"snapshots": [{"id": r["id"], "taken_at": r["taken_at"]} for r in rows]})
+
+
+async def exam_snapshot_image(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    try:
+        snapshot_id = int(request.match_info["snapshot_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(reason="invalid snapshot id")
+    snapshot = db.get_exam_snapshot(snapshot_id)
+    if snapshot is None:
+        raise web.HTTPNotFound(reason="snapshot not found")
+    exam = _exam_or_404(db, snapshot["exam_id"])
+    if not _is_course_manager(db, user_id, exam["course_id"]):
+        raise web.HTTPForbidden(reason="not allowed")
+    return web.Response(body=snapshot["data"], content_type="image/jpeg")
+
+
+async def reset_exam_attempt(request: web.Request) -> web.Response:
+    """Преподаватель разрешает пересдачу: удаляет попытку студента (или незавершённый сеанс)
+    вместе с записью экрана и снимками камеры."""
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    exam = _exam_or_404(db, _int_field(data, "exam_id"))
+    _require_grade_manager(db, user_id, exam["course_id"])
+    db.reset_exam_attempt(exam["id"], _int_field(data, "user_id"))
+    return web.json_response({"ok": True})
 
 
 def register_routes(app: web.Application) -> None:
@@ -1168,7 +1354,13 @@ def register_routes(app: web.Application) -> None:
     app.router.add_post("/api/academics/exam-questions", add_exam_question)
     app.router.add_post("/api/academics/exam-questions/delete", delete_exam_question)
     app.router.add_get("/api/academics/exams/{exam_id}/questions", get_exam_questions)
+    app.router.add_post("/api/academics/exams/start", start_exam)
+    app.router.add_post("/api/academics/exams/snapshot", exam_snapshot)
+    app.router.add_post("/api/academics/exams/recording-chunk", exam_recording_chunk)
     app.router.add_post("/api/academics/exams/submit", submit_exam)
     app.router.add_get("/api/academics/exams/my-attempt", my_exam_attempt)
     app.router.add_get("/api/academics/exams/{exam_id}/attempts", exam_attempts)
     app.router.add_get("/api/academics/exam-attempts/{attempt_id}/recording", exam_recording)
+    app.router.add_get("/api/academics/exam-attempts/{attempt_id}/snapshots", exam_attempt_snapshots)
+    app.router.add_get("/api/academics/exam-snapshots/{snapshot_id}", exam_snapshot_image)
+    app.router.add_post("/api/academics/exam-attempts/reset", reset_exam_attempt)

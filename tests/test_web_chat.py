@@ -29,7 +29,7 @@ def capture_otp_emails(monkeypatch):
     """Brevo в тестах не настроен (ключа нет) — подменяем отправку письма, чтобы достать код."""
     sent: dict[str, str] = {}
 
-    async def fake_send(app, to_email, code):
+    async def fake_send(app, to_email, code, purpose="verify"):
         sent[to_email] = code
 
     monkeypatch.setattr(web_chat_module, "_send_otp_email", fake_send)
@@ -68,23 +68,23 @@ def test_register_requires_verification_before_login(monkeypatch):
         client, db = make_client()
         async with client:
             status, body = await _register(client, "Аян", "Касым", "+7 700 123 45 67",
-                                            "ayan@example.com", "secret1", "male")
+                                            "ayan@example.com", "secret-pw-1", "male")
             assert status == 201
             assert body["ok"] is True and "email" in body
             assert "token" not in body  # токен выдаётся только после подтверждения почты
 
             # Телефон нормализуется (пробелы убираются), повторная регистрация тем же телефоном — конфликт
             status, _ = await _register(client, "Другой", "Чел", "+77001234567",
-                                        "other@example.com", "secret2", "female")
+                                        "other@example.com", "secret-pw-2", "female")
             assert status == 409
 
             # Тот же email с другим телефоном — тоже конфликт
             status, _ = await _register(client, "Третий", "Чел", "+77009998877",
-                                        "ayan@example.com", "secret3", "female")
+                                        "ayan@example.com", "secret-pw-3", "female")
             assert status == 409
 
             # Пока почта не подтверждена — логин с верным паролем всё равно отклоняется
-            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "secret1"})
+            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "secret-pw-1"})
             assert resp.status == 403
 
             code = sent["ayan@example.com"]
@@ -94,7 +94,7 @@ def test_register_requires_verification_before_login(monkeypatch):
             assert verify_body["user"]["id"] == 1
 
             # Теперь логин с правильным паролем проходит
-            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "secret1"})
+            resp = await client.post("/api/chat/login", json={"email": "ayan@example.com", "password": "secret-pw-1"})
             assert resp.status == 200
             login_body = await resp.json()
             assert login_body["user"]["id"] == 1
@@ -106,12 +106,20 @@ def test_register_requires_verification_before_login(monkeypatch):
     run(go())
 
 
-def test_otp_request_rejects_unknown_email():
+def test_otp_request_does_not_reveal_unknown_email(monkeypatch):
+    """Ответ одинаковый для любой почты — по нему нельзя узнать, кто зарегистрирован.
+    Письмо при этом уходит только на существующий аккаунт."""
+    sent = capture_otp_emails(monkeypatch)
+
     async def go():
         client, db = make_client()
         async with client:
             resp = await client.post("/api/chat/otp/request", json={"email": "nobody@example.com"})
-            assert resp.status == 404
+            assert resp.status == 200
+            assert "nobody@example.com" not in sent
+
+            resp = await client.post("/api/chat/otp/request", json={"email": "not-an-email"})
+            assert resp.status == 400
 
     run(go())
 
@@ -122,7 +130,7 @@ def test_otp_verify_rejects_wrong_code(monkeypatch):
     async def go():
         client, db = make_client()
         async with client:
-            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "secret1", "male")
+            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "secret-pw-1", "male")
             assert "ayan@example.com" in sent  # код уже отправлен при регистрации
 
             resp = await client.post("/api/chat/otp/verify", json={"email": "ayan@example.com", "code": "000000"})
@@ -140,7 +148,7 @@ def test_otp_locks_after_too_many_wrong_attempts(monkeypatch):
     async def go():
         client, db = make_client()
         async with client:
-            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "secret1", "male")
+            await _register(client, "Аян", "Касым", "+77001234567", "ayan@example.com", "secret-pw-1", "male")
 
             for _ in range(5):
                 resp = await client.post("/api/chat/otp/verify",
@@ -160,11 +168,11 @@ def test_registration_validation():
         client, db = make_client()
         async with client:
             status, _ = await _register(client, "", "Фамилия", "+77001234567",
-                                        "a@example.com", "secret1", "male")
+                                        "a@example.com", "secret-pw-1", "male")
             assert status == 400  # нет имени
 
             status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
-                                        "not-an-email", "secret1", "male")
+                                        "not-an-email", "secret-pw-1", "male")
             assert status == 400  # невалидная почта
 
             status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
@@ -172,15 +180,15 @@ def test_registration_validation():
             assert status == 400  # пароль короче 6 символов
 
             status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
-                                        "a@example.com", "secret1", "alien")
+                                        "a@example.com", "secret-pw-1", "alien")
             assert status == 400  # пол не male/female
 
             status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
-                                        "a@example.com", "secret1", "male", course="")
+                                        "a@example.com", "secret-pw-1", "male", course="")
             assert status == 400  # нет курса
 
             status, _ = await _register(client, "Имя", "Фамилия", "+77001234567",
-                                        "a@example.com", "secret1", "male", specialty="")
+                                        "a@example.com", "secret-pw-1", "male", specialty="")
             assert status == 400  # нет специальности
 
     run(go())
@@ -193,7 +201,7 @@ def test_nickname_defaults_when_blank(monkeypatch):
         client, db = make_client()
         async with client:
             u = await _register_and_verify(client, sent, "Аян", "Касым", "+77001234567",
-                                           "ayan@example.com", "secret1", "male")
+                                           "ayan@example.com", "secret-pw-1", "male")
             assert u["user"]["nickname"]  # автоматически сгенерирован, непустой
 
             resp = await client.get("/api/chat/me", headers=auth(u["token"]))
@@ -212,11 +220,11 @@ def test_gender_matching_opposite_and_same(monkeypatch):
         client, db = make_client()
         async with client:
             male_a = await _register_and_verify(client, sent, "А", "А", "+77001110001",
-                                                "a@example.com", "secret1", "male")
+                                                "a@example.com", "secret-pw-1", "male")
             female_b = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
-                                                   "b@example.com", "secret1", "female")
+                                                   "b@example.com", "secret-pw-1", "female")
             male_c = await _register_and_verify(client, sent, "В", "В", "+77001110003",
-                                                "c@example.com", "secret1", "male")
+                                                "c@example.com", "secret-pw-1", "male")
 
             token_a, token_b, token_c = male_a["token"], female_b["token"], male_c["token"]
 
@@ -252,9 +260,9 @@ def test_send_and_poll_messages(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
-                                            "b@example.com", "secret1", "female")
+                                            "b@example.com", "secret-pw-1", "female")
             t1, t2 = u1["token"], u2["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -292,9 +300,9 @@ def test_stop_ends_dialog_for_both_sides(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
-                                            "b@example.com", "secret1", "female")
+                                            "b@example.com", "secret-pw-1", "female")
             t1, t2 = u1["token"], u2["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -316,11 +324,11 @@ def test_next_requeues_immediately(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
-                                            "b@example.com", "secret1", "female")
+                                            "b@example.com", "secret-pw-1", "female")
             u3 = await _register_and_verify(client, sent, "В", "В", "+77001110003",
-                                            "c@example.com", "secret1", "female")
+                                            "c@example.com", "secret-pw-1", "female")
             t1, t2, t3 = u1["token"], u2["token"], u3["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -354,11 +362,11 @@ def test_send_and_fetch_photo(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "А", "А", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
-                                            "b@example.com", "secret1", "female")
+                                            "b@example.com", "secret-pw-1", "female")
             u3 = await _register_and_verify(client, sent, "В", "В", "+77001110003",
-                                            "c@example.com", "secret1", "female")
+                                            "c@example.com", "secret-pw-1", "female")
             t1, t2, t3 = u1["token"], u2["token"], u3["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -366,7 +374,7 @@ def test_send_and_fetch_photo(monkeypatch):
             dialog_id = (await resp.json())["dialog_id"]
 
             import base64
-            photo_bytes = b"\x89PNG fake-bytes"
+            photo_bytes = b"\x89PNG\r\n\x1a\n fake-bytes"
             resp = await client.post("/api/chat/send-photo", headers=auth(t1), json={
                 "dialog_id": dialog_id, "content_type": "image/png",
                 "data": base64.b64encode(photo_bytes).decode(),
@@ -390,10 +398,11 @@ def test_send_and_fetch_photo(monkeypatch):
             resp = await client.get(f"/api/chat/photo/{photo_id}", headers=auth(t3))
             assert resp.status == 403
 
-            # Неподходящий content_type отклоняется
+            # Тип определяется по сигнатуре файла, а не по заявленному content_type:
+            # PDF, выданный за картинку, отклоняется
             resp = await client.post("/api/chat/send-photo", headers=auth(t1), json={
-                "dialog_id": dialog_id, "content_type": "application/pdf",
-                "data": base64.b64encode(photo_bytes).decode(),
+                "dialog_id": dialog_id, "content_type": "image/png",
+                "data": base64.b64encode(b"%PDF-1.4 not an image").decode(),
             })
             assert resp.status == 400
 
@@ -407,9 +416,9 @@ def test_reveal_sends_full_name_message(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Б", "Б", "+77001110002",
-                                            "b@example.com", "secret1", "female")
+                                            "b@example.com", "secret-pw-1", "female")
             t1, t2 = u1["token"], u2["token"]
 
             await client.post("/api/chat/search", headers=auth(t1), json={"preference": "any"})
@@ -435,11 +444,11 @@ def test_search_users_by_name(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "Аян", "Касымов", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             await _register_and_verify(client, sent, "Берік", "Қасымов", "+77001110002",
-                                       "b@example.com", "secret1", "male")
+                                       "b@example.com", "secret-pw-1", "male")
             await _register_and_verify(client, sent, "Әсел", "Нұрлан", "+77001110003",
-                                       "c@example.com", "secret1", "female")
+                                       "c@example.com", "secret-pw-1", "female")
             t1 = u1["token"]
 
             # Пустой запрос — весь список зарегистрированных (справочник), без самого себя
@@ -472,11 +481,11 @@ def test_direct_chat_start_is_idempotent_and_private(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                            "b@example.com", "secret1", "male")
+                                            "b@example.com", "secret-pw-1", "male")
             u3 = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
-                                            "c@example.com", "secret1", "female")
+                                            "c@example.com", "secret-pw-1", "female")
             t1, t2, t3 = u1["token"], u2["token"], u3["token"]
             id1, id2 = u1["user"]["id"], u2["user"]["id"]
 
@@ -544,9 +553,9 @@ def test_direct_chat_is_independent_from_anonymous_matchmaking(monkeypatch):
         client, db = make_client()
         async with client:
             u1 = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                            "a@example.com", "secret1", "male")
+                                            "a@example.com", "secret-pw-1", "male")
             u2 = await _register_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                            "b@example.com", "secret1", "male")
+                                            "b@example.com", "secret-pw-1", "male")
             t1 = u1["token"]
             id2 = u2["user"]["id"]
 
@@ -572,16 +581,16 @@ def test_email_can_only_be_used_once(monkeypatch):
     async def go():
         client, db = make_client()
         async with client:
-            status, _ = await _register(client, "Аян", "Касым", "+77001110001", "dup@example.com", "secret1", "male")
+            status, _ = await _register(client, "Аян", "Касым", "+77001110001", "dup@example.com", "secret-pw-1", "male")
             assert status == 201
 
             # Та же почта, даже с другим телефоном и до подтверждения первой — конфликт
-            status, _ = await _register(client, "Другой", "Чел", "+77001110099", "dup@example.com", "secret2", "female")
+            status, _ = await _register(client, "Другой", "Чел", "+77001110099", "dup@example.com", "secret-pw-2", "female")
             assert status == 409
 
             # После подтверждения первой — тоже конфликт, почта навсегда занята этим аккаунтом
             await client.post("/api/chat/otp/verify", json={"email": "dup@example.com", "code": sent["dup@example.com"]})
-            status, _ = await _register(client, "Третий", "Чел", "+77001110098", "dup@example.com", "secret3", "male")
+            status, _ = await _register(client, "Третий", "Чел", "+77001110098", "dup@example.com", "secret-pw-3", "male")
             assert status == 409
 
     run(go())
@@ -593,10 +602,10 @@ def test_stats_include_web_chat_counts(monkeypatch):
     async def go():
         client, db = make_client()
         async with client:
-            await _register(client, "А", "А", "+77001110001", "a@example.com", "secret1", "male")
+            await _register(client, "А", "А", "+77001110001", "a@example.com", "secret-pw-1", "male")
             resp = await client.get("/api/stats")
             data = await resp.json()
-            assert data["web_users"] == 1
-            assert data["web_dialogs"] == 0
+            assert data["users"] == 1
+            assert data["dialogs_total"] == 0
 
     run(go())

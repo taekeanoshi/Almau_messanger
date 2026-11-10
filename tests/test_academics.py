@@ -29,7 +29,7 @@ def auth(token):
 def capture_otp_emails(monkeypatch):
     sent: dict[str, str] = {}
 
-    async def fake_send(app, to_email, code):
+    async def fake_send(app, to_email, code, purpose="verify"):
         sent[to_email] = code
 
     monkeypatch.setattr(web_chat_module, "_send_otp_email", fake_send)
@@ -74,7 +74,7 @@ def test_student_enroll_and_unenroll(monkeypatch):
         client, db = make_client()
         async with client:
             u = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                           "a@example.com", "secret1", "male")
+                                           "a@example.com", "secret-pw-1", "male")
             t = u["token"]
             course_id = db.create_course("CS101", "Введение в программирование")
 
@@ -112,7 +112,7 @@ def test_student_cannot_manage_courses(monkeypatch):
         client, db = make_client()
         async with client:
             u = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                           "a@example.com", "secret1", "male")
+                                           "a@example.com", "secret-pw-1", "male")
             t = u["token"]
 
             resp = await client.post("/api/academics/courses", headers=auth(t),
@@ -140,11 +140,11 @@ def test_teacher_flow_schedule_and_grades(monkeypatch):
         client, db = make_client(admin_token="admintok")
         async with client:
             teacher = await _register_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                 "teacher@example.com", "secret1", "male")
+                                                 "teacher@example.com", "secret-pw-1", "male")
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             other_student = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
-                                                        "c@example.com", "secret1", "female")
+                                                        "c@example.com", "secret-pw-1", "female")
             t_teacher, t_student = teacher["token"], student["token"]
 
             resp = await client.post("/api/admin/set-role", params={"token": "admintok"},
@@ -208,7 +208,7 @@ def test_teacher_flow_schedule_and_grades(monkeypatch):
 
             # Чужой преподаватель без роли admin не может трогать эту дисциплину
             other_teacher = await _register_and_verify(client, sent, "Данияр", "Ким", "+77001110004",
-                                                        "d@example.com", "secret1", "male")
+                                                        "d@example.com", "secret-pw-1", "male")
             await client.post("/api/admin/set-role", params={"token": "admintok"},
                               json={"email": "d@example.com", "role": "teacher"})
             resp = await client.post("/api/academics/grades/set", headers=auth(other_teacher["token"]), json={
@@ -250,21 +250,21 @@ def test_teacher_registration_requires_valid_invite_key(monkeypatch):
             # Без ключа вообще не зарегистрироваться
             resp = await client.post("/api/chat/register", json={
                 "first_name": "Берик", "last_name": "Нурлан", "phone": "+77001110002",
-                "email": "teacher@example.com", "password": "secret1", "account_type": "teacher",
+                "email": "teacher@example.com", "password": "secret-pw-1", "account_type": "teacher",
             })
             assert resp.status == 400
 
             # С неверным ключом — тоже нет
             resp = await client.post("/api/chat/register", json={
                 "first_name": "Берик", "last_name": "Нурлан", "phone": "+77001110002",
-                "email": "teacher@example.com", "password": "secret1",
+                "email": "teacher@example.com", "password": "secret-pw-1",
                 "account_type": "teacher", "invite_key": "garbage",
             })
             assert resp.status == 403
 
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             assert teacher["user"]["gender"] == ""
 
             resp = await client.get("/api/chat/me", headers=auth(teacher["token"]))
@@ -274,7 +274,7 @@ def test_teacher_registration_requires_valid_invite_key(monkeypatch):
             # Старый ключ после перевыпуска больше не работает
             resp = await client.post("/api/chat/register", json={
                 "first_name": "Второй", "last_name": "Учитель", "phone": "+77001110005",
-                "email": "teacher2@example.com", "password": "secret1",
+                "email": "teacher2@example.com", "password": "secret-pw-1",
                 "account_type": "teacher", "invite_key": key,
             })
             assert resp.status == 201  # ключ ещё не перевыпускали — пока валиден
@@ -283,7 +283,7 @@ def test_teacher_registration_requires_valid_invite_key(monkeypatch):
             assert new_key != key
             resp = await client.post("/api/chat/register", json={
                 "first_name": "Третий", "last_name": "Учитель", "phone": "+77001110006",
-                "email": "teacher3@example.com", "password": "secret1",
+                "email": "teacher3@example.com", "password": "secret-pw-1",
                 "account_type": "teacher", "invite_key": key,  # старый ключ
             })
             assert resp.status == 403
@@ -291,7 +291,7 @@ def test_teacher_registration_requires_valid_invite_key(monkeypatch):
             # Неизвестный account_type отклоняется
             resp = await client.post("/api/chat/register", json={
                 "first_name": "Х", "last_name": "Х", "phone": "+77001110007",
-                "email": "x@example.com", "password": "secret1", "account_type": "wizard",
+                "email": "x@example.com", "password": "secret-pw-1", "account_type": "wizard",
             })
             assert resp.status == 400
 
@@ -306,7 +306,7 @@ def test_teacher_cannot_use_anonymous_chat_or_event_going(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             t = teacher["token"]
 
             resp = await client.post("/api/chat/search", headers=auth(t), json={"preference": "any"})
@@ -329,7 +329,7 @@ def test_admin_account_can_use_everything(monkeypatch):
         client, db = make_client(admin_token="admintok")
         async with client:
             u = await _register_and_verify(client, sent, "Хамит", "Хасанов", "+77001110009",
-                                           "owner@example.com", "secret1", "male")
+                                           "owner@example.com", "secret-pw-1", "male")
             resp = await client.post("/api/admin/set-role", params={"token": "admintok"},
                                      json={"email": "owner@example.com", "role": "admin"})
             assert resp.status == 200
@@ -346,7 +346,7 @@ def test_admin_account_can_use_everything(monkeypatch):
             # И, как и раньше, полный доступ к учёбе: видит все дисциплины как "преподаваемые"
             other_key = await _rotate_key(client, "teacher")
             other_teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                              "teacher@example.com", "secret1", "teacher", other_key)
+                                                              "teacher@example.com", "secret-pw-1", "teacher", other_key)
             resp = await client.post("/api/academics/courses", headers=auth(other_teacher["token"]),
                                      json={"code": "CS101", "title": "Введение"})
             course_id = (await resp.json())["course"]["id"]
@@ -368,9 +368,9 @@ def test_multi_variant_schedule_choice(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             t_teacher, t_student = teacher["token"], student["token"]
 
             resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -416,9 +416,9 @@ def test_course_schedule_options_visible_to_any_logged_in_user(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             resp = await client.post("/api/academics/courses", headers=auth(teacher["token"]),
                                      json={"code": "MATH101", "title": "Математика"})
             course_id = (await resp.json())["course"]["id"]
@@ -446,12 +446,12 @@ def test_registrar_manages_schedule_not_grades(monkeypatch):
             teacher_key = await _rotate_key(client, "teacher")
             registrar_key = await _rotate_key(client, "registrar")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", teacher_key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", teacher_key)
             registrar = await _register_staff_and_verify(client, sent, "Дана", "Серik", "+77001110004",
-                                                          "registrar@example.com", "secret1", "registrar",
+                                                          "registrar@example.com", "secret-pw-1", "registrar",
                                                           registrar_key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             t_teacher, t_registrar, t_student = teacher["token"], registrar["token"], student["token"]
 
             resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -480,7 +480,7 @@ def test_registrar_manages_schedule_not_grades(monkeypatch):
 
             # Может назначить другого преподавателя конкретному варианту
             other_teacher = await _register_staff_and_verify(client, sent, "Данияр", "Ким", "+77001110005",
-                                                              "teacher2@example.com", "secret1", "teacher",
+                                                              "teacher2@example.com", "secret-pw-1", "teacher",
                                                               await _rotate_key(client, "teacher"))
             resp = await client.post("/api/academics/schedule/set-teacher", headers=auth(t_registrar),
                                      json={"item_id": item_id, "teacher_id": other_teacher["user"]["id"]})
@@ -502,9 +502,9 @@ def test_attendance_marking_and_automatic_retake(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             t_teacher, t_student = teacher["token"], student["token"]
             student_id = student["user"]["id"]
 
@@ -553,7 +553,7 @@ def test_attendance_marking_and_automatic_retake(monkeypatch):
 
             # Чужой студент (не выбравший этот вариант) отметить его тоже нельзя
             other = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
-                                               "c@example.com", "secret1", "female")
+                                               "c@example.com", "secret-pw-1", "female")
             resp = await client.post("/api/academics/attendance/mark", headers=auth(t_teacher), json={
                 "schedule_item_id": item_id, "user_id": other["user"]["id"],
                 "class_date": "2026-01-05", "present": True,
@@ -575,11 +575,11 @@ def test_assignment_create_submit_grade_flow(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             outsider = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
-                                                   "c@example.com", "secret1", "female")
+                                                   "c@example.com", "secret-pw-1", "female")
             t_teacher, t_student, t_outsider = teacher["token"], student["token"], outsider["token"]
 
             resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -680,9 +680,9 @@ def test_assignment_rejects_bad_file_and_empty_submission(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             t_teacher, t_student = teacher["token"], student["token"]
 
             resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -719,9 +719,9 @@ async def _setup_course_with_lesson(client, sent, admin_token="admintok"):
     """Общий сетап: преподаватель + дисциплина + видеоурок с 2 вопросами, студент записан."""
     key = await _rotate_key(client, "teacher", admin_token)
     teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                "teacher@example.com", "secret1", "teacher", key)
+                                                "teacher@example.com", "secret-pw-1", "teacher", key)
     student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                         "a@example.com", "secret1", "male")
+                                         "a@example.com", "secret-pw-1", "male")
     t_teacher, t_student = teacher["token"], student["token"]
 
     resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -752,11 +752,11 @@ def test_lesson_create_list_and_file_access(monkeypatch):
         async with client:
             key = await _rotate_key(client, "teacher")
             teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                        "teacher@example.com", "secret1", "teacher", key)
+                                                        "teacher@example.com", "secret-pw-1", "teacher", key)
             student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                                 "a@example.com", "secret1", "male")
+                                                 "a@example.com", "secret-pw-1", "male")
             outsider = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
-                                                   "c@example.com", "secret1", "female")
+                                                   "c@example.com", "secret-pw-1", "female")
             t_teacher, t_student, t_outsider = teacher["token"], student["token"], outsider["token"]
 
             resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -856,7 +856,7 @@ def test_quiz_submit_auto_grades_and_allows_retake(monkeypatch):
 
             # Незаписанный не может пройти тест
             outsider = await _register_and_verify(client, sent, "Данияр", "Ким", "+77001110004",
-                                                   "d@example.com", "secret1", "male")
+                                                   "d@example.com", "secret-pw-1", "male")
             resp = await client.post("/api/academics/quiz/submit", headers=auth(outsider["token"]),
                                      json={"lesson_id": lesson_id, "answers": [1, 1]})
             assert resp.status == 403
@@ -922,9 +922,9 @@ def test_delete_lesson_cascades_quiz(monkeypatch):
 async def _setup_course_with_exam(client, sent, require_recording=False, admin_token="admintok"):
     key = await _rotate_key(client, "teacher", admin_token)
     teacher = await _register_staff_and_verify(client, sent, "Берик", "Нурлан", "+77001110002",
-                                                "teacher@example.com", "secret1", "teacher", key)
+                                                "teacher@example.com", "secret-pw-1", "teacher", key)
     student = await _register_and_verify(client, sent, "Аян", "Касым", "+77001110001",
-                                         "a@example.com", "secret1", "male")
+                                         "a@example.com", "secret-pw-1", "male")
     t_teacher, t_student = teacher["token"], student["token"]
 
     resp = await client.post("/api/academics/courses", headers=auth(t_teacher),
@@ -965,9 +965,17 @@ def test_exam_create_and_question_visibility(monkeypatch):
             exams = (await resp.json())["exams"]
             assert len(exams) == 1 and exams[0]["time_limit_minutes"] == 30
 
+            # До старта экзамена студент вопросы не видит вообще
             resp = await client.get(f"/api/academics/exams/{exam_id}/questions", headers=auth(t_student))
-            questions = (await resp.json())["questions"]
+            assert resp.status == 403
+
+            # После старта — видит, но без правильных ответов; лимит считает сервер
+            resp = await client.post("/api/academics/exams/start", headers=auth(t_student), json={"exam_id": exam_id})
+            assert resp.status == 200
+            body = await resp.json()
+            questions = body["questions"]
             assert len(questions) == 2 and all("correct_index" not in q for q in questions)
+            assert 29 * 60 < body["seconds_left"] <= 30 * 60
 
             resp = await client.get(f"/api/academics/exams/{exam_id}/questions", headers=auth(t_teacher))
             assert all("correct_index" in q for q in (await resp.json())["questions"])
@@ -1000,17 +1008,37 @@ def test_exam_submit_grades_and_counts_tab_exits(monkeypatch):
             attempts = (await resp.json())["attempts"]
             assert len(attempts) == 1 and attempts[0]["tab_exit_count"] == 3 and attempts[0]["first_name"] == "Аян"
 
-            # Пересдача перезаписывает попытку (новый tab_exit_count), а не плодит вторую
+            # Правильные ответы после сдачи не возвращаются — иначе их можно подсмотреть и пересдать
+            assert "results" not in body
+
+            # Экзамен сдаётся один раз: ни пересдать, ни начать заново нельзя
             resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
                 "exam_id": exam_id, "answers": [0, 0], "tab_exit_count": 7,
             })
-            assert (await resp.json())["tab_exit_count"] == 7
+            assert resp.status == 409
+            resp = await client.post("/api/academics/exams/start", headers=auth(t_student), json={"exam_id": exam_id})
+            assert resp.status == 409
+
+            # Студент не может сбросить попытку сам — только преподаватель
+            reset = {"exam_id": exam_id, "user_id": student["user"]["id"]}
+            resp = await client.post("/api/academics/exam-attempts/reset", headers=auth(t_student), json=reset)
+            assert resp.status == 403
+            resp = await client.post("/api/academics/exam-attempts/reset", headers=auth(t_teacher), json=reset)
+            assert resp.status == 200
+
+            # После сброса преподавателем — пересдача проходит, попытка по-прежнему одна
+            resp = await client.post("/api/academics/exams/submit", headers=auth(t_student), json={
+                "exam_id": exam_id, "answers": [0, 0], "tab_exit_count": 7, "away_seconds": 42,
+            })
+            body = await resp.json()
+            assert resp.status == 200 and body["tab_exit_count"] == 7 and body["score"] == 0.0
             resp = await client.get(f"/api/academics/exams/{exam_id}/attempts", headers=auth(t_teacher))
-            assert len((await resp.json())["attempts"]) == 1
+            attempts = (await resp.json())["attempts"]
+            assert len(attempts) == 1 and attempts[0]["away_seconds"] == 42
 
             # Незаписанный не может сдать экзамен
             outsider = await _register_and_verify(client, sent, "Әсел", "Жанар", "+77001110003",
-                                                   "c@example.com", "secret1", "female")
+                                                   "c@example.com", "secret-pw-1", "female")
             resp = await client.post("/api/academics/exams/submit", headers=auth(outsider["token"]),
                                      json={"exam_id": exam_id, "answers": [1, 1], "tab_exit_count": 0})
             assert resp.status == 403
@@ -1057,7 +1085,7 @@ def test_exam_recording_required_and_access_controlled(monkeypatch):
 
             # Посторонний — нет
             outsider = await _register_and_verify(client, sent, "Данияр", "Ким", "+77001110004",
-                                                   "d@example.com", "secret1", "male")
+                                                   "d@example.com", "secret-pw-1", "male")
             resp = await client.get(f"/api/academics/exam-attempts/{attempt_id}/recording", headers=auth(outsider["token"]))
             assert resp.status == 403
 

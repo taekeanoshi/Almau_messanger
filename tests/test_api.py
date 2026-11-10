@@ -101,14 +101,15 @@ def test_post_lead_saves_to_db_and_rejects_incomplete():
     run(go())
 
 
-def test_stats_reports_leads_count():
+def test_public_stats_hide_internal_counters():
+    """Публичная статистика — только цифры для главной; заявки, жалобы и баны наружу не отдаются."""
     async def go():
         client, db, content = make_client()
         async with client:
             db.add_lead("Аян", "@ayan", "", None)
             resp = await client.get("/api/stats")
             data = await resp.json()
-            assert data["leads"] == 1
+            assert set(data) == {"users", "dialogs_total", "event_dialogs"}
 
     run(go())
 
@@ -116,7 +117,7 @@ def test_stats_reports_leads_count():
 def test_post_event_going_requires_a_registered_account(monkeypatch):
     sent = {}
 
-    async def fake_send(app, to_email, code):
+    async def fake_send(app, to_email, code, purpose="verify"):
         sent[to_email] = code
 
     monkeypatch.setattr(web_chat_module, "_send_otp_email", fake_send)
@@ -132,7 +133,7 @@ def test_post_event_going_requires_a_registered_account(monkeypatch):
 
             await client.post("/api/chat/register", json={
                 "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
-                "email": "ayan@example.com", "password": "secret1", "gender": "male",
+                "email": "ayan@example.com", "password": "secret-pw-1", "gender": "male",
                 "course": "2", "specialty": "Computer Science",
             })
             verify = await client.post("/api/chat/otp/verify",
@@ -161,7 +162,7 @@ def test_post_event_going_requires_a_registered_account(monkeypatch):
 
 def test_get_leads_requires_admin_token():
     async def go():
-        client, db, content = make_client(admin_token="secret")
+        client, db, content = make_client(admin_token="secret-pw")
         async with client:
             db.add_lead("Аян", "@ayan", "", None)
 
@@ -171,7 +172,7 @@ def test_get_leads_requires_admin_token():
             resp = await client.get("/api/leads", params={"token": "wrong"})
             assert resp.status == 401
 
-            resp = await client.get("/api/leads", params={"token": "secret"})
+            resp = await client.get("/api/leads", params={"token": "secret-pw"})
             assert resp.status == 200
             data = await resp.json()
             assert len(data) == 1 and data[0]["name"] == "Аян"
@@ -191,11 +192,11 @@ def test_get_leads_disabled_without_admin_token_configured():
 
 def test_admin_reset_web_chat_requires_token_and_confirmation():
     async def go():
-        client, db, content = make_client(admin_token="secret")
+        client, db, content = make_client(admin_token="secret-pw")
         async with client:
             await client.post("/api/chat/register", json={
                 "first_name": "Аян", "last_name": "Касым", "phone": "+77001234567",
-                "email": "ayan@example.com", "password": "secret1", "gender": "male",
+                "email": "ayan@example.com", "password": "secret-pw-1", "gender": "male",
                 "course": "2", "specialty": "Computer Science",
             })
             assert db.stats()["web_users"] == 1
@@ -206,12 +207,12 @@ def test_admin_reset_web_chat_requires_token_and_confirmation():
             assert db.stats()["web_users"] == 1
 
             # С токеном, но без явного confirm=yes — тоже отказ, данные целы
-            resp = await client.post("/api/admin/reset-web-chat", params={"token": "secret"})
+            resp = await client.post("/api/admin/reset-web-chat", params={"token": "secret-pw"})
             assert resp.status == 400
             assert db.stats()["web_users"] == 1
 
             # Токен + confirm=yes — стирает все web_* таблицы и возвращает, сколько удалено
-            resp = await client.post("/api/admin/reset-web-chat", params={"token": "secret", "confirm": "yes"})
+            resp = await client.post("/api/admin/reset-web-chat", params={"token": "secret-pw", "confirm": "yes"})
             assert resp.status == 200
             body = await resp.json()
             assert body["deleted"]["web_users"] == 1
