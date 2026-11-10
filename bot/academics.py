@@ -173,11 +173,19 @@ def _schedule_item_or_404(db: Database, item_id: int):
     return item
 
 
-def _public_course(row) -> dict:
-    return {
+def _person_name(db: Database, user_id: int | None) -> str:
+    row = db.get_web_user(user_id) if user_id is not None else None
+    return f"{row['first_name']} {row['last_name']}".strip() if row is not None else ""
+
+
+def _public_course(row, db: Database | None = None) -> dict:
+    out = {
         "id": row["id"], "code": row["code"], "title": row["title"],
         "description": row["description"], "teacher_id": row["teacher_id"],
     }
+    if db is not None:
+        out["teacher_name"] = _person_name(db, row["teacher_id"])
+    return out
 
 
 def _public_schedule_item(row) -> dict:
@@ -192,9 +200,17 @@ def _public_schedule_item(row) -> dict:
     return out
 
 
+def _schedule_item_with_teacher(db: Database, row) -> dict:
+    """Пара + кто её ведёт (переопределённый преподаватель варианта или преподаватель дисциплины)."""
+    out = _public_schedule_item(row)
+    course = db.get_course(row["course_id"])
+    out["teacher_name"] = _person_name(db, _effective_slot_teacher_id(course, row)) if course else ""
+    return out
+
+
 def _public_grade(row) -> dict:
     out = {
-        "id": row["id"], "course_id": row["course_id"], "label": row["label"],
+        "id": row["id"], "course_id": row["course_id"], "user_id": row["user_id"], "label": row["label"],
         "score": row["score"], "max_score": row["max_score"], "comment": row["comment"],
     }
     if "course_code" in row.keys():
@@ -220,13 +236,13 @@ def _int_field(data: dict, key: str) -> int:
 async def list_courses(request: web.Request) -> web.Response:
     require_session(request)
     db: Database = request.app["db"]
-    return web.json_response({"courses": [_public_course(c) for c in db.list_courses()]})
+    return web.json_response({"courses": [_public_course(c, db) for c in db.list_courses()]})
 
 
 async def my_courses(request: web.Request) -> web.Response:
     user_id = require_session(request)
     db: Database = request.app["db"]
-    return web.json_response({"courses": [_public_course(c) for c in db.courses_for_student(user_id)]})
+    return web.json_response({"courses": [_public_course(c, db) for c in db.courses_for_student(user_id)]})
 
 
 async def enroll(request: web.Request) -> web.Response:
@@ -267,7 +283,7 @@ async def course_schedule_options(request: web.Request) -> web.Response:
     except ValueError:
         raise web.HTTPBadRequest(reason="invalid course id")
     _require_course(db, course_id)
-    items = [_public_schedule_item(i) for i in db.schedule_for_course(course_id)]
+    items = [_schedule_item_with_teacher(db, i) for i in db.schedule_for_course(course_id)]
     return web.json_response({"schedule": items})
 
 
@@ -282,7 +298,7 @@ async def choose_schedule(request: web.Request) -> web.Response:
 
     target_id = data.get("user_id")
     if target_id is not None:
-        target_id = int(target_id)
+        target_id = _int_field(data, "user_id")
         _require_schedule_manager(db, user_id, course_id)
     else:
         target_id = user_id
@@ -299,7 +315,7 @@ async def choose_schedule(request: web.Request) -> web.Response:
 async def my_schedule(request: web.Request) -> web.Response:
     user_id = require_session(request)
     db: Database = request.app["db"]
-    items = [_public_schedule_item(i) for i in db.schedule_for_student(user_id)]
+    items = [_schedule_item_with_teacher(db, i) for i in db.schedule_for_student(user_id)]
     return web.json_response({"schedule": items})
 
 
@@ -326,11 +342,80 @@ async def my_attendance(request: web.Request) -> web.Response:
 
 
 async def teaching(request: web.Request) -> web.Response:
+    """Дисциплины, которыми управляет сотрудник: преподаватель — свои, отдел расписания
+    и админ — все. can_grade говорит интерфейсу, показывать ли оценки/задания/экзамены
+    (отделу расписания доступно только расписание и состав групп)."""
     user_id = require_session(request)
     db: Database = request.app["db"]
-    user = _require_role(db, user_id, TEACHING_ROLES)
-    courses = db.list_courses() if user["role"] == "admin" else db.courses_taught_by(user_id)
-    return web.json_response({"courses": [_public_course(c) for c in courses]})
+    user = _require_role(db, user_id, TEACHING_ROLES | SCHEDULING_ROLES)
+    courses = db.courses_taught_by(user_id) if user["role"] == "teacher" else db.list_courses()
+    return web.json_response({
+        "courses": [_public_course(c, db) for c in courses],
+        "role": user["role"],
+        "can_grade": user["role"] in TEACHING_ROLES,
+        "can_assign_teachers": user["role"] in SCHEDULING_ROLES,
+    })
+
+
+async def list_teachers(request: web.Request) -> web.Response:
+    """Кого можно назначить преподавателем — для отдела расписания и админа."""
+    user_id = require_session(request)
+    db: Database = request.app["db"]
+    _require_role(db, user_id, SCHEDULING_ROLES)
+    return web.json_response({"teachers": [
+        {"id": t["id"], "first_name": t["first_name"], "last_name": t["last_name"]} for t in db.teaching_staff()]})
+
+
+def _teacher_id_from(db: Database, data: dict) -> int | None:
+    teacher_id = data.get("teacher_id")
+    if teacher_id in (None, ""):
+        return None
+    try:
+        teacher_id = int(teacher_id)
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason="teacher_id must be an integer")
+    teacher = db.get_web_user(teacher_id)
+    if teacher is None or teacher["role"] not in TEACHING_ROLES:
+        raise web.HTTPBadRequest(reason="teacher_id must reference a teacher account")
+    return teacher_id
+
+
+async def set_course_teacher(request: web.Request) -> web.Response:
+    """Назначить (или снять) преподавателя дисциплины — отдел расписания или админ."""
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    _require_role(db, user_id, SCHEDULING_ROLES)
+    course_id = _course_id_from(data)
+    _require_course(db, course_id)
+    db.set_course_teacher(course_id, _teacher_id_from(db, data))
+    return web.json_response({"ok": True, "course": _public_course(db.get_course(course_id), db)})
+
+
+async def update_course(request: web.Request) -> web.Response:
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    course_id = _course_id_from(data)
+    _require_grade_manager(db, user_id, course_id)
+    code = str(data.get("code", "")).strip()[:MAX_CODE_LEN]
+    title = str(data.get("title", "")).strip()[:MAX_TITLE_LEN]
+    description = str(data.get("description", "")).strip()[:MAX_DESCRIPTION_LEN]
+    if not code or not title:
+        raise web.HTTPBadRequest(reason="code and title are required")
+    db.update_course(course_id, code, title, description)
+    return web.json_response({"ok": True, "course": _public_course(db.get_course(course_id), db)})
+
+
+async def delete_course(request: web.Request) -> web.Response:
+    """Удаляет дисциплину вместе со всем содержимым — преподаватель этой дисциплины или админ."""
+    user_id = require_session(request)
+    data = await read_json_body(request)
+    db: Database = request.app["db"]
+    course_id = _course_id_from(data)
+    _require_grade_manager(db, user_id, course_id)
+    db.delete_course(course_id)
+    return web.json_response({"ok": True})
 
 
 async def create_course(request: web.Request) -> web.Response:
@@ -347,7 +432,7 @@ async def create_course(request: web.Request) -> web.Response:
 
     teacher_id = user_id if user["role"] == "teacher" else None
     course_id = db.create_course(code, title, description, teacher_id)
-    return web.json_response({"ok": True, "course": _public_course(db.get_course(course_id))}, status=201)
+    return web.json_response({"ok": True, "course": _public_course(db.get_course(course_id), db)}, status=201)
 
 
 async def course_roster(request: web.Request) -> web.Response:
@@ -388,12 +473,7 @@ async def add_schedule_item(request: web.Request) -> web.Response:
     if kind not in VALID_KINDS:
         raise web.HTTPBadRequest(reason=f"kind must be one of {sorted(VALID_KINDS)}")
 
-    teacher_id = data.get("teacher_id")
-    if teacher_id is not None:
-        teacher_id = int(teacher_id)
-        teacher = db.get_web_user(teacher_id)
-        if teacher is None or teacher["role"] not in TEACHING_ROLES:
-            raise web.HTTPBadRequest(reason="teacher_id must reference a teacher account")
+    teacher_id = _teacher_id_from(db, data)
 
     item_id = db.add_schedule_item(course_id, day_of_week, start_time, end_time, room, kind, teacher_id)
     return web.json_response({"ok": True, "item": _public_schedule_item(db.get_schedule_item(item_id))}, status=201)
@@ -409,12 +489,7 @@ async def set_schedule_teacher(request: web.Request) -> web.Response:
 
     item_id = _int_field(data, "item_id")
     item = _schedule_item_or_404(db, item_id)
-    teacher_id = data.get("teacher_id")
-    if teacher_id is not None:
-        teacher_id = int(teacher_id)
-        teacher = db.get_web_user(teacher_id)
-        if teacher is None or teacher["role"] not in TEACHING_ROLES:
-            raise web.HTTPBadRequest(reason="teacher_id must reference a teacher account")
+    teacher_id = _teacher_id_from(db, data)
     db.set_schedule_item_teacher(item_id, teacher_id)
     return web.json_response({"ok": True, "item": _public_schedule_item(db.get_schedule_item(item["id"]))})
 
@@ -438,7 +513,7 @@ async def course_schedule(request: web.Request) -> web.Response:
     except ValueError:
         raise web.HTTPBadRequest(reason="invalid course id")
     _require_schedule_manager(db, user_id, course_id)
-    items = [_public_schedule_item(i) for i in db.schedule_for_course(course_id)]
+    items = [_schedule_item_with_teacher(db, i) for i in db.schedule_for_course(course_id)]
     return web.json_response({"schedule": items})
 
 
@@ -1318,6 +1393,10 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/academics/attendance", my_attendance)
     app.router.add_get("/api/academics/teaching", teaching)
     app.router.add_post("/api/academics/courses", create_course)
+    app.router.add_post("/api/academics/courses/update", update_course)
+    app.router.add_post("/api/academics/courses/delete", delete_course)
+    app.router.add_post("/api/academics/courses/set-teacher", set_course_teacher)
+    app.router.add_get("/api/academics/teachers", list_teachers)
     app.router.add_get("/api/academics/courses/{course_id}/roster", course_roster)
     app.router.add_get("/api/academics/courses/{course_id}/schedule", course_schedule)
     app.router.add_get("/api/academics/courses/{course_id}/options", course_schedule_options)

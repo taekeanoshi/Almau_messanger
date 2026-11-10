@@ -490,3 +490,84 @@ def test_dashboard_summarises_the_day(monkeypatch):
             assert (await client.get("/api/dashboard")).status == 401
 
     run(go())
+
+
+# ---------- отдел расписания и управление дисциплинами ----------
+
+def test_registrar_manages_all_courses_and_assigns_teachers(monkeypatch):
+    from tests.test_academics import _register_staff_and_verify, _rotate_key
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent)
+            key = await _rotate_key(client, "registrar")
+            registrar = await _register_staff_and_verify(client, sent, "Дана", "Ермек", "+77004440001",
+                                                         "reg@example.com", "secret-pw-1", "registrar", key)
+            t_reg, t_teacher, t_student = registrar["token"], teacher["token"], student["token"]
+
+            # Отдел расписания видит все дисциплины, но без права ставить оценки
+            resp = await client.get("/api/academics/teaching", headers=auth(t_reg))
+            body = await resp.json()
+            assert resp.status == 200 and [c["id"] for c in body["courses"]] == [course_id]
+            assert body["can_grade"] is False and body["can_assign_teachers"] is True
+            assert body["courses"][0]["teacher_name"] == "Берик Нурлан"
+            # Студенту этот раздел закрыт
+            assert (await client.get("/api/academics/teaching", headers=auth(t_student))).status == 403
+
+            resp = await client.get("/api/academics/teachers", headers=auth(t_reg))
+            assert [t["id"] for t in (await resp.json())["teachers"]] == [teacher["user"]["id"]]
+            assert (await client.get("/api/academics/teachers", headers=auth(t_teacher))).status == 403
+
+            # Снять и снова назначить преподавателя дисциплины; студента назначить нельзя
+            resp = await client.post("/api/academics/courses/set-teacher", headers=auth(t_reg),
+                                     json={"course_id": course_id, "teacher_id": None})
+            assert (await resp.json())["course"]["teacher_id"] is None
+            resp = await client.post("/api/academics/courses/set-teacher", headers=auth(t_reg),
+                                     json={"course_id": course_id, "teacher_id": student["user"]["id"]})
+            assert resp.status == 400
+            resp = await client.post("/api/academics/courses/set-teacher", headers=auth(t_reg),
+                                     json={"course_id": course_id, "teacher_id": teacher["user"]["id"]})
+            assert (await resp.json())["course"]["teacher_name"] == "Берик Нурлан"
+            resp = await client.post("/api/academics/courses/set-teacher", headers=auth(t_teacher),
+                                     json={"course_id": course_id, "teacher_id": None})
+            assert resp.status == 403
+
+            # В расписании студента видно, кто ведёт пару
+            await client.post("/api/academics/schedule", headers=auth(t_reg), json={
+                "course_id": course_id, "day_of_week": 1, "start_time": "09:00", "end_time": "10:30"})
+            resp = await client.get("/api/academics/schedule", headers=auth(t_student))
+            assert (await resp.json())["schedule"][0]["teacher_name"] == "Берик Нурлан"
+
+    run(go())
+
+
+def test_course_update_and_delete_cascade(monkeypatch):
+    sent = capture_otp_emails(monkeypatch)
+
+    async def go():
+        client, db = make_client(admin_token="admintok")
+        async with client:
+            teacher, student, course_id, exam_id = await _setup_course_with_exam(client, sent)
+            t_teacher, t_student = teacher["token"], student["token"]
+            await client.post("/api/academics/assignments", headers=auth(t_teacher),
+                              json={"course_id": course_id, "title": "Эссе"})
+            await client.post("/api/academics/exams/submit", headers=auth(t_student),
+                              json={"exam_id": exam_id, "answers": [1, 1]})
+
+            resp = await client.post("/api/academics/courses/update", headers=auth(t_student),
+                                     json={"course_id": course_id, "code": "X", "title": "Y"})
+            assert resp.status == 403
+            resp = await client.post("/api/academics/courses/update", headers=auth(t_teacher),
+                                     json={"course_id": course_id, "code": "CS102", "title": "Алгоритмы"})
+            assert (await resp.json())["course"]["code"] == "CS102"
+
+            assert (await client.post("/api/academics/courses/delete", headers=auth(t_student),
+                                      json={"course_id": course_id})).status == 403
+            assert (await client.post("/api/academics/courses/delete", headers=auth(t_teacher),
+                                      json={"course_id": course_id})).status == 200
+            for table in ("courses", "enrollments", "assignments", "exams", "exam_questions", "exam_attempts"):
+                assert db.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table
+
+    run(go())

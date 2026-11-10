@@ -703,6 +703,39 @@ class Database:
     def get_course(self, course_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)).fetchone()
 
+    def update_course(self, course_id: int, code: str, title: str, description: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE courses SET code = ?, title = ?, description = ? WHERE id = ?",
+                              (code, title, description, course_id))
+
+    def set_course_teacher(self, course_id: int, teacher_id: int | None) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE courses SET teacher_id = ? WHERE id = ?", (teacher_id, course_id))
+
+    def delete_course(self, course_id: int) -> None:
+        """Удаляет дисциплину со всем содержимым: расписание, записи студентов, оценки,
+        посещаемость, задания со сдачами, уроки с тестами, экзамены с попытками и записями."""
+        for exam in self.exams_for_course(course_id):
+            self.delete_exam(exam["id"])
+        for lesson in self.lessons_for_course(course_id):
+            self.delete_lesson(lesson["id"])
+        for assignment in self.assignments_for_course(course_id):
+            self.delete_assignment(assignment["id"])
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM attendance WHERE schedule_item_id IN (SELECT id FROM schedule_items WHERE course_id = ?)",
+                (course_id,))
+            for table in ("schedule_items", "enrollments", "grades"):
+                self.conn.execute(f"DELETE FROM {table} WHERE course_id = ?", (course_id,))
+            self.conn.execute("DELETE FROM courses WHERE id = ?", (course_id,))
+
+    def teaching_staff(self) -> list[sqlite3.Row]:
+        """Кого можно назначить вести дисциплину или пару: преподаватели и админы."""
+        return self.conn.execute(
+            """SELECT id, first_name, last_name, role FROM web_users
+               WHERE role IN ('teacher', 'admin') AND banned = 0 ORDER BY first_name, last_name"""
+        ).fetchall()
+
     def courses_taught_by(self, teacher_id: int) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM courses WHERE teacher_id = ? ORDER BY code", (teacher_id,)).fetchall()
 
