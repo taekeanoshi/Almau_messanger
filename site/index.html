@@ -115,6 +115,22 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .partner-card:hover{border-color:var(--acc)}
 .partner-card img{width:84px;height:84px;border-radius:50%;object-fit:cover;flex:none}
 .partner-card div{flex:1;min-width:220px}.partner-card h3{font-size:20px;margin:8px 0 6px}.partner-card p{color:var(--mute);margin:0;font-size:15px}
+.partners{display:grid;gap:14px}
+/* Страницы партнёров Remus и Hunters: свой акцент поверх общей темы */
+#p-remus{--acc:#ecebf5;--glow:rgba(236,235,245,.18)}
+#p-hunters{--acc:#ff5361;--glow:rgba(214,38,52,.35)}
+.club-hero.themed{margin-top:32px;padding:40px 32px;border-radius:28px;border:1px solid var(--line);
+  background:radial-gradient(circle at 15% 0,var(--glow),transparent 55%),radial-gradient(circle at 100% 100%,rgba(91,49,189,.25),transparent 50%),var(--panel)}
+#p-remus .club-hero img{background:#000;border-color:#3a3a46}
+#p-hunters .club-hero img{background:#fff;border-color:#5a1820}
+.partner-form{max-width:none;margin:0}
+.partner-form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.partner-form label{display:grid;gap:6px;font-size:13px;color:var(--mute)}
+.partner-split{display:grid;grid-template-columns:1fr 1.1fr;gap:24px;align-items:start}
+.partner-split .pitch h2{font-size:clamp(24px,3vw,36px);margin-bottom:12px}
+.partner-split .pitch p{color:var(--mute);margin:0 0 14px}
+.partner-split .pitch ul{margin:0;padding-left:20px;color:#dcdce4;display:grid;gap:8px}
+@media(max-width:760px){.partner-split,.partner-form .row{grid-template-columns:1fr}.club-hero.themed{padding:28px 20px}}
 .club-hero{display:flex;gap:32px;align-items:center;flex-wrap:wrap;padding:56px 0 24px}
 .club-hero img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:3px solid var(--line);flex:none}
 .club-hero h1{font-size:clamp(34px,5vw,60px);font-weight:800;margin:14px 0 10px}
@@ -188,6 +204,8 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
   <a class="tab" href="#events" data-p="events">Ивенты</a>
   <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
+  <a class="tab" href="#remus" data-p="remus">🐺 Remus</a>
+  <a class="tab" href="#hunters" data-p="hunters">🦅 Hunters</a>
   <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
   <a class="tab" href="#people" data-p="people">🔎 Люди</a>
   <a class="tab" href="#academics" data-p="academics">🎓 Учёба</a>
@@ -249,12 +267,26 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 
  <section>
   <div class="head"><div><h2>Партнёры</h2><p>Клубы, которые работают с нами: афиша мероприятий и отметки «Иду» идут прямо через приложение.</p></div></div>
-  <a class="partner-card" href="#summit">
-   <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
-   <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Summit Seekers</h3>
-   <p>Горный клуб AlmaU: походы выходного дня и лекции о безопасном туризме.</p></div>
-   <span class="btn sm">Смотреть походы</span>
-  </a>
+  <div class="partners">
+   <a class="partner-card" href="#summit">
+    <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
+    <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Summit Seekers</h3>
+    <p>Горный клуб AlmaU: походы выходного дня и лекции о безопасном туризме.</p></div>
+    <span class="btn sm">Смотреть походы</span>
+   </a>
+   <a class="partner-card" href="#remus">
+    <img src="img/clubs/remus.jpg" alt="Логотип Remus">
+    <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Remus</h3>
+    <p>Стая, которая больше чем семья: вечеринки и культурные ивенты для студентов Алматы, включая DTMM.</p></div>
+    <span class="btn sm">🎫 Билеты на DTMM</span>
+   </a>
+   <a class="partner-card" href="#hunters">
+    <img src="img/clubs/hunters.jpg" alt="Логотип Hunters">
+    <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Hunters</h3>
+    <p>Команда амбассадоров AlmaU: первыми встречают абитуриентов на днях открытых дверей.</p></div>
+    <span class="btn sm">🙋 Стать волонтёром</span>
+   </a>
+  </div>
  </section>
 
  <section>
@@ -326,6 +358,117 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </section>
 
  <section><div class="cta"><img class="mark" src="img/clubs/summit.jpg" alt="Логотип Summit Seekers"><h2>Идёте в горы с Summit Seekers?</h2><p>Summit Seekers — партнёр Pople.</p><a class="btn ghost" href="https://instagram.com/summit.seekers.almau" target="_blank" rel="noopener">Instagram клуба</a></div></section>
+</div>
+
+<!-- REMUS: партнёр -->
+<div class="page" id="p-remus">
+ <div class="club-hero themed">
+  <img src="img/clubs/remus.jpg" alt="Логотип Remus">
+  <div>
+   <span class="partner-badge">🤝 Партнёр Pople</span>
+   <h1>Remus</h1>
+   <p>Стая, которая больше чем семья. С 2015 года Remus собирает студентов Алматы на культурные и развлекательные вечеринки: DTMM, Remus Night, Secret Santa и AVA.</p>
+   <div class="actions">
+    <a class="btn" href="#remus" data-scroll="remus-tickets">🎫 Купить билет на DTMM</a>
+    <a class="btn ghost" href="https://instagram.com/remus.almaty" target="_blank" rel="noopener">Instagram клуба</a>
+   </div>
+  </div>
+ </div>
+
+ <section id="remus-tickets">
+  <div class="partner-split">
+   <div class="pitch">
+    <span class="partner-badge">🎫 DTMM</span>
+    <h2>Билеты на DTMM</h2>
+    <p>Главный ивент стаи Remus. Оставь заявку на билет: организаторы свяжутся с тобой, расскажут про оплату и пришлют билет.</p>
+    <ul>
+     <li>Дата, место и цена — у организаторов и в Instagram клуба.</li>
+     <li>Можно взять билеты сразу на компанию, до 10 штук.</li>
+     <li>Хочешь пойти, но не с кем? Найди компанию в анонимном чате Pople.</li>
+    </ul>
+   </div>
+   <form class="lead partner-form" id="remus-ticket-form">
+    <div class="row">
+     <label>Имя<input name="name" required maxlength="80" autocomplete="name"></label>
+     <label>Telegram или телефон<input name="contact" required maxlength="80" autocomplete="tel"></label>
+    </div>
+    <label>Сколько билетов<input name="qty" type="number" min="1" max="10" value="1" required></label>
+    <label>Комментарий<textarea name="note" maxlength="200" placeholder="Например: идём втроём с 2 курса"></textarea></label>
+    <button class="btn" type="submit">🎫 Купить билет на DTMM</button>
+    <p class="lead-status" id="remus-ticket-status" aria-live="polite"></p>
+   </form>
+  </div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Ивенты стаи</h2><p>Отмечайся «Иду» во вкладке «Ивенты», чтобы найти компанию.</p></div></div>
+  <div class="grid" id="remus-events" aria-live="polite"></div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Как купить билет</h2></div></div>
+  <div class="steps">
+   <div class="step"><span>1</span><h3>Оставь заявку</h3><p>Имя, контакт и сколько билетов нужно.</p></div>
+   <div class="step"><span>2</span><h3>Жди сообщения</h3><p>Организатор Remus напишет тебе в Telegram или позвонит.</p></div>
+   <div class="step"><span>3</span><h3>Оплати</h3><p>Способ оплаты и цену подскажет организатор.</p></div>
+   <div class="step"><span>4</span><h3>Приходи</h3><p>Покажи билет на входе — и ты в стае.</p></div>
+  </div>
+ </section>
+
+ <section><div class="cta"><img class="mark" src="img/clubs/remus.jpg" alt="Логотип Remus" style="background:#000"><h2>Увидимся на DTMM?</h2><p>Remus — партнёр Pople.</p><div class="actions" style="justify-content:center"><a class="btn" href="#remus" data-scroll="remus-tickets">🎫 Купить билет на DTMM</a><a class="btn ghost" href="https://instagram.com/remus.almaty" target="_blank" rel="noopener">Instagram клуба</a></div></div></section>
+</div>
+
+<!-- HUNTERS: партнёр -->
+<div class="page" id="p-hunters">
+ <div class="club-hero themed">
+  <img src="img/clubs/hunters.jpg" alt="Логотип Hunters">
+  <div>
+   <span class="partner-badge">🤝 Партнёр Pople</span>
+   <h1>Hunters</h1>
+   <p>Команда амбассадоров AlmaU: первые, кого встречают абитуриенты. Продвигают университет и его ценности на днях открытых дверей, выставках и студенческих вечеринках.</p>
+   <div class="actions">
+    <a class="btn" href="#hunters" data-scroll="hunters-volunteer">🙋 Записаться волонтёром на день открытых дверей</a>
+    <a class="btn ghost" href="https://instagram.com/almau_hunters" target="_blank" rel="noopener">Instagram клуба</a>
+   </div>
+  </div>
+ </div>
+
+ <section id="hunters-volunteer">
+  <div class="partner-split">
+   <div class="pitch">
+    <span class="partner-badge">🦅 Open Day</span>
+    <h2>Волонтёры на день открытых дверей</h2>
+    <p id="hunters-openday-date">Hunters собирают команду волонтёров, которые помогут абитуриентам и их родителям познакомиться с AlmaU.</p>
+    <ul>
+     <li>Встречать гостей и помогать на регистрации.</li>
+     <li>Проводить экскурсии по кампусу.</li>
+     <li>Рассказывать о студенческой жизни и клубах.</li>
+    </ul>
+   </div>
+   <form class="lead partner-form" id="hunters-volunteer-form">
+    <div class="row">
+     <label>Имя и фамилия<input name="name" required maxlength="80" autocomplete="name"></label>
+     <label>Telegram или телефон<input name="contact" required maxlength="80" autocomplete="tel"></label>
+    </div>
+    <label>Курс и специальность<input name="course" maxlength="60" placeholder="Например: 2 курс, маркетинг"></label>
+    <label>Почему хочешь стать волонтёром<textarea name="note" maxlength="180"></textarea></label>
+    <button class="btn" type="submit">🙋 Записаться волонтёром</button>
+    <p class="lead-status" id="hunters-volunteer-status" aria-live="polite"></p>
+   </form>
+  </div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Как стать волонтёром</h2></div></div>
+  <div class="steps">
+   <div class="step"><span>1</span><h3>Оставь заявку</h3><p>Имя, курс и контакт — меньше минуты.</p></div>
+   <div class="step"><span>2</span><h3>Познакомься с командой</h3><p>Hunters свяжутся с тобой и позовут на встречу перед Open Day.</p></div>
+   <div class="step"><span>3</span><h3>Получи роль</h3><p>Регистрация, экскурсии или навигация — по твоему выбору.</p></div>
+   <div class="step"><span>4</span><h3>Встречай абитуриентов</h3><p>Покажи им AlmaU таким, каким его знаешь ты.</p></div>
+  </div>
+ </section>
+
+ <section><div class="cta"><img class="mark" src="img/clubs/hunters.jpg" alt="Логотип Hunters" style="background:#fff"><h2>Станешь лицом AlmaU на Open Day?</h2><p>Hunters — партнёр Pople.</p><div class="actions" style="justify-content:center"><a class="btn" href="#hunters" data-scroll="hunters-volunteer">🙋 Записаться волонтёром на день открытых дверей</a><a class="btn ghost" href="https://instagram.com/almau_hunters" target="_blank" rel="noopener">Instagram клуба</a></div></div></section>
 </div>
 
 <!-- EVENTS -->
@@ -525,7 +668,7 @@ function clubTile(c) {
     ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
     <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
     <div class="chips">${c.partner ? `<span>🤝 Партнёр Pople</span>` : ""}${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div>
-    ${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">🏔 Походы и запись</a>` : ""}</article>`;
+    ${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">${esc(c.cta || "🏔 Походы и запись")}</a>` : ""}</article>`;
 }
 
 function eventTile(e) {
@@ -736,6 +879,108 @@ async function loadSummit() {
   } catch {
     document.getElementById("lessons").innerHTML = `<div class="empty">Не удалось загрузить уроки. Откройте сайт через веб-сервер.</div>`;
   }
+}
+
+// ---------- Remus и Hunters (партнёры) ----------
+// Билеты на DTMM и запись волонтёров идут заявками в тот же POST /api/leads, что и форма
+// на главной: у заявки свой event_id ("dtmm" / "open-day"), поэтому в /leads у бота и в
+// GET /api/leads их легко отличить. Если API недоступен — честно говорим об этом и даём Instagram клуба.
+function initPartnerForm(formId, statusId, eventId, buildMessage, fallbackIg) {
+  const form = document.getElementById(formId);
+  const status = document.getElementById(statusId);
+  if (!form) return;
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = form.querySelector("button[type=submit]");
+    const data = Object.fromEntries(new FormData(form).entries());
+    const payload = {
+      name: String(data.name || "").trim(),
+      contact: String(data.contact || "").trim(),
+      message: buildMessage(data).slice(0, 300),
+      event_id: eventId,
+    };
+    status.textContent = "Отправляем…";
+    btn.disabled = true;
+    try {
+      const r = await fetch(API + "/api/leads", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error("lead");
+      status.textContent = "Готово! Организаторы скоро с тобой свяжутся.";
+      form.reset();
+    } catch {
+      status.innerHTML = `Не получилось отправить заявку. Напиши клубу в Instagram: <a href="https://instagram.com/${esc(fallbackIg)}" target="_blank" rel="noopener">@${esc(fallbackIg)}</a>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+function prefillPartnerForms() {
+  if (!chatUser) return;
+  const full = [chatUser.first_name, chatUser.last_name].filter(Boolean).join(" ");
+  for (const id of ["remus-ticket-form", "hunters-volunteer-form"]) {
+    const input = document.querySelector(`#${id} input[name=name]`);
+    if (input && !input.value) input.value = full;
+  }
+  const course = document.querySelector("#hunters-volunteer-form input[name=course]");
+  if (course && !course.value && (chatUser.course || chatUser.specialty)) {
+    course.value = [chatUser.course ? `${chatUser.course} курс` : "", chatUser.specialty || ""].filter(Boolean).join(", ");
+  }
+}
+
+function clubEventCard(e) {
+  return `<article class="hike">
+    <div class="when">${esc(e.date)}</div>
+    <h3>${e.emoji} ${esc(e.title)}</h3>
+    <p>${esc(e.description)}</p>
+  </article>`;
+}
+
+let partnerEvents = null;
+async function partnerEventsList() {
+  if (!partnerEvents) partnerEvents = await fetchJson("data/events.json");
+  return partnerEvents;
+}
+
+async function loadRemus() {
+  prefillPartnerForms();
+  const box = document.getElementById("remus-events");
+  const dtmm = `<article class="hike">
+    <div class="when">Дата — у организаторов</div>
+    <h3>🎫 DTMM</h3>
+    <p>Главный ивент стаи Remus. Билеты — по заявке прямо здесь.</p>
+    <a class="btn sm" href="#remus" data-scroll="remus-tickets">Купить билет на DTMM</a>
+  </article>`;
+  try {
+    const events = (await partnerEventsList()).filter(e => e.club === "remus");
+    box.innerHTML = dtmm + events.map(clubEventCard).join("");
+  } catch {
+    box.innerHTML = dtmm;
+  }
+}
+
+async function loadHunters() {
+  prefillPartnerForms();
+  try {
+    const openDay = (await partnerEventsList()).find(e => e.id === "open-day");
+    const el = document.getElementById("hunters-openday-date");
+    if (openDay && el && !el.dataset.filled) {
+      el.textContent += ` Ближайший Open Day: ${openDay.date}.`;
+      el.dataset.filled = "1";
+    }
+  } catch {}
+}
+
+function initPartners() {
+  initPartnerForm("remus-ticket-form", "remus-ticket-status", "dtmm",
+    d => `Билет на DTMM × ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))}${d.note ? `. ${String(d.note).trim()}` : ""}`,
+    "remus.almaty");
+  initPartnerForm("hunters-volunteer-form", "hunters-volunteer-status", "open-day",
+    d => `Волонтёр на день открытых дверей (Hunters)${d.course ? ` · ${String(d.course).trim()}` : ""}${d.note ? `. ${String(d.note).trim()}` : ""}`,
+    "almau_hunters");
 }
 
 // ---------- Анонимный чат на сайте (свои аккаунты, без Telegram) ----------
@@ -2253,17 +2498,20 @@ function enterAcademicsPage() {
 
 function route() {
   const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events", "summit", "chat", "people", "academics"].includes(p) ? p : "home";
+  const id = ["home", "clubs", "events", "summit", "remus", "hunters", "chat", "people", "academics"].includes(p) ? p : "home";
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
   window.scrollTo(0, 0);
   if (id === "summit") loadSummit();
+  if (id === "remus") loadRemus();
+  if (id === "hunters") loadHunters();
   if (id === "people") enterPeoplePage();
   if (id === "academics") enterAcademicsPage();
 }
 initChat();
 initPeople();
 initAcademics();
+initPartners();
 addEventListener("hashchange", route);
 route();
 load();
