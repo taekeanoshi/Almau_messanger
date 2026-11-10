@@ -58,6 +58,29 @@ def test_clubs_and_events_served_from_backend():
     run(go())
 
 
+def test_cors_preflight_allows_authorization_header():
+    """Сайт и API на разных доменах: без Authorization в Allow-Headers браузер блокирует
+    preflight и ни один запрос с Bearer-токеном (то есть всё после входа) не доходит."""
+    async def go():
+        client, db, content = make_client()
+        async with client:
+            resp = await client.options("/api/chat/me", headers={
+                "Origin": "https://example.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            })
+            assert resp.status == 200
+            allowed = {h.strip().lower() for h in resp.headers["Access-Control-Allow-Headers"].split(",")}
+            assert {"authorization", "content-type"} <= allowed
+
+            # И на ошибках (401) CORS-заголовки тоже есть — иначе фронт видит «сеть упала», а не 401
+            resp = await client.get("/api/chat/me", headers={"Authorization": "Bearer nope"})
+            assert resp.status == 401
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+    run(go())
+
+
 def test_post_lead_saves_to_db_and_rejects_incomplete():
     async def go():
         client, db, content = make_client()

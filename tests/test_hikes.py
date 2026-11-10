@@ -281,4 +281,4 @@ def test_hikes_and_school_json_are_valid():
 
 def test_summit_is_marked_as_partner():
     content = Content(BASE_DIR / "site" / "data")
-    assert [c.id for c in content.clubs if c.partner] == ["summit"]
+    assert {c.id for c in content.clubs if c.partner} == {"summit", "remus", "hunters"}

@@ -29,7 +29,10 @@ MAX_FIELD_LEN = 300
 def _add_cors_headers(resp: web.StreamResponse, allowed_origin: str) -> None:
     resp.headers["Access-Control-Allow-Origin"] = allowed_origin
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    # Authorization обязателен: сайт (Vercel) и API (Railway) — разные домены, и без него
+    # браузер на preflight блокирует каждый запрос с Bearer-токеном, то есть всё после входа.
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Admin-Token"
+    resp.headers["Access-Control-Max-Age"] = "600"
 
 
 def _cors_middleware(allowed_origin: str):
