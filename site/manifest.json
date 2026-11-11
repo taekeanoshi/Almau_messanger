@@ -1,7 +1,7 @@
 {
   "name": "Pople",
   "short_name": "Pople",
-  "description": "Pople — анонимный чат, клубы и ивенты для студентов AlmaU",
+  "description": "Pople — учёба и общение студентов AlmaU: расписание, оценки, задания, экзамены, чаты, клубы и ивенты",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
