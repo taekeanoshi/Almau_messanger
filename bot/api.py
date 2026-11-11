@@ -76,6 +76,11 @@ def _cors_middleware(allowed_origin: str):
         except web.HTTPException as exc:
             _add_common_headers(exc, allowed_origin)
             raise
+        except Exception:
+            # Без этого ответ 500 уходил бы без CORS-заголовков, и сайт видел бы «нет связи»
+            # вместо «ошибка сервера»; подробности остаются только в логах.
+            logger.exception("Необработанная ошибка в %s %s", request.method, request.path)
+            resp = web.json_response({"error": "internal server error"}, status=500)
         _add_common_headers(resp, allowed_origin)
         return resp
 

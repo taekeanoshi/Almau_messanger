@@ -81,6 +81,25 @@ def test_cors_preflight_allows_authorization_header():
     run(go())
 
 
+def test_unexpected_server_error_still_carries_cors_headers(monkeypatch):
+    """Падение обработчика не должно выглядеть для сайта как обрыв сети: ответ 500 приходит
+    с CORS-заголовками и без подробностей ошибки."""
+    async def go():
+        client, db, content = make_client()
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("secret internals")
+
+        monkeypatch.setattr(db, "stats", boom)
+        async with client:
+            resp = await client.get("/api/stats")
+            assert resp.status == 500
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert "secret internals" not in await resp.text()
+
+    run(go())
+
+
 def test_post_lead_saves_to_db_and_rejects_incomplete():
     async def go():
         client, db, content = make_client()
