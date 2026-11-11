@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Pople — анонимный чат для студентов AlmaU</title>
+<title>Pople — учёба и общение студентов AlmaU</title>
+<meta name="description" content="Pople — платформа для студентов AlmaU: анонимный чат, сообщения, расписание, оценки, задания, экзамены, клубы и ивенты в одном аккаунте.">
+<!-- Адрес бэкенда (bot/api_server.py). При смене домена поправьте и connect-src в vercel.json. -->
+<meta name="pople-api" content="https://almaumessanger-production.up.railway.app">
 <link rel="icon" type="image/png" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
@@ -14,217 +17,37 @@
 <meta name="apple-mobile-web-app-title" content="Pople">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#050507;--panel:#13101c;--line:#2a2436;--text:#f2f2f5;--mute:#9c93ad;--acc:#a78bfa;--acc2:#5b31bd;
- box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-*,*:before,*:after{box-sizing:inherit}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 Manrope,system-ui,sans-serif}
-a{color:inherit}
-h1,h2,h3{font-family:Unbounded,Manrope,sans-serif;line-height:1.1;margin:0}
-.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
-nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:rgba(5,5,7,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-nav .wrap{display:flex;align-items:center;gap:8px;height:64px}
-.nav-drawer{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));right:20px;max-width:calc(100vw - 40px);min-width:220px;
- background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:8px;display:flex;flex-direction:column;gap:2px;
- box-shadow:0 20px 50px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .18s,transform .18s}
-.nav-drawer.open{opacity:1;visibility:visible;transform:translateY(0)}
-.nav-drawer .tab{padding:12px 14px;border-radius:12px;white-space:nowrap}
-.nav-drawer .tab.on{background:#1c1826;color:var(--text)}
-.logo{display:flex;align-items:center;gap:10px;font-family:Unbounded;font-weight:800;font-size:15px;margin-right:auto;white-space:nowrap;text-decoration:none}
-.logo img{width:36px;height:36px;border-radius:50%;flex:none}
-.logo b{color:var(--acc)}
-.tab{padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--mute);white-space:nowrap;font-weight:500}
-.tab.on{background:var(--panel);color:var(--text);border:1px solid var(--line)}
-.btn{display:inline-block;background:var(--acc);color:#050507;font-weight:700;padding:12px 22px;border-radius:999px;text-decoration:none;white-space:nowrap}
-.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
-.actions{display:flex;gap:8px;flex-wrap:wrap}
-.btn.sm{padding:7px 14px;font-size:13px;margin-top:12px}
-button.btn{font:700 15px Manrope,system-ui,sans-serif;cursor:pointer;border:none}
-button.btn:disabled{opacity:.6;cursor:default}
-.going-count{color:var(--mute)}
-a:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
-section{padding:56px 0}
-.page{display:none}.page.on{display:block}
-/* [hidden] должен побеждать display:grid/flex классов вроде .lead — иначе скрытая форма всё равно видна */
-[hidden]{display:none!important}
-/* hero */
-.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:64px 0 40px}
-.hero h1{font-size:clamp(34px,5.6vw,68px);font-weight:800;letter-spacing:-.02em}
-.hero p{color:var(--mute);font-size:18px;max-width:34em;margin:22px 0 28px}
-.chat{background:var(--panel);border:1px solid var(--line);border-radius:28px;padding:22px;min-height:380px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
-.chat:before{content:"";position:absolute;inset:-40% -40% auto auto;width:320px;height:320px;background:radial-gradient(var(--acc2),transparent 70%);opacity:.35}
-.chat .top{display:flex;justify-content:space-between;color:var(--mute);font-size:13px;border-bottom:1px solid var(--line);padding-bottom:12px;position:relative}
-.msg{max-width:78%;padding:10px 14px;border-radius:18px;font-size:15px;position:relative;opacity:0;transform:translateY(8px);animation:in .4s forwards}
-.msg.l{background:#1c1c24;border-bottom-left-radius:4px}
-.msg.r{background:var(--acc);color:#050507;align-self:flex-end;border-bottom-right-radius:4px}
-.msg.sys{align-self:center;background:transparent;border:1px dashed var(--line);color:var(--mute);font-size:13px}
-@keyframes in{to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.msg{animation:none;opacity:1;transform:none}}
-/* sections */
-.head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:26px;flex-wrap:wrap}
-.head h2{font-size:clamp(26px,3.4vw,40px)}
-.head p{color:var(--mute);margin:8px 0 0;max-width:40em}
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-.step{border:1px solid var(--line);border-radius:22px;padding:22px;background:var(--panel)}
-.step span{font-family:Unbounded;color:var(--acc);font-size:28px}
-.step h3{font-size:17px;margin:14px 0 8px}
-.step p{color:var(--mute);margin:0;font-size:15px}
-.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:22px;overflow:hidden}
-.feat div{background:var(--bg);padding:26px}
-.feat h3{font-size:16px;margin-bottom:8px}.feat p{color:var(--mute);margin:0;font-size:15px}
-.feat .new{color:var(--acc);font-size:11px;font-family:Manrope;font-weight:700;border:1px solid var(--acc);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
-code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
-.filters{display:flex;gap:8px;flex-wrap:wrap}
-.filters button{background:var(--panel);color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font:500 14px Manrope;cursor:pointer}
-.filters button.on{background:var(--text);color:var(--bg)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
-.tile{position:relative;border-radius:22px;overflow:hidden;min-height:320px;display:flex;flex-direction:column;justify-content:flex-end;padding:20px;border:1px solid var(--line);isolation:isolate}
-.tile .art{position:absolute;inset:0;z-index:-1}
-.tile .art:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 25%,rgba(5,5,7,.92) 78%)}
-.tile .glyph{position:absolute;top:16px;left:18px;font-size:44px}
-.tile .badge{position:absolute;top:16px;left:18px;width:76px;height:76px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.2);box-shadow:0 8px 24px rgba(0,0,0,.45);background:#fff}
-.ev .badge{width:56px;height:56px}
-.tile{padding-top:112px}.tile.ev{padding-top:92px}
-.cta .mark{width:88px;height:88px;border-radius:50%;margin-bottom:18px}
-.tile .ig{position:absolute;top:18px;right:18px;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);font-size:12px;padding:5px 10px;border-radius:999px;text-decoration:none}
-.tile h3{font-size:20px}
-.tile p{color:#c8c8d2;font-size:14px;margin:8px 0 12px}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
-.chips span{font-size:12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:3px 10px;color:#dcdce4}
-.tile.wide{grid-column:span 2}
-.ev .date{font-family:Unbounded;font-size:13px;color:var(--acc);margin-bottom:8px}
-.ev .who{font-size:13px;color:var(--mute)}
-.ev .btn{align-self:flex-start}
-.empty{color:var(--mute);border:1px dashed var(--line);border-radius:22px;padding:28px;text-align:center}
-.cta{border-radius:28px;padding:48px 28px;text-align:center;background:radial-gradient(circle at 30% 0,rgba(91,49,189,.5),transparent 60%),var(--panel);border:1px solid var(--line)}
-.cta h2{font-size:clamp(26px,3.6vw,44px);margin-bottom:14px}.cta p{color:var(--mute);margin:0 0 26px}
-.stats-bar{display:flex;gap:32px;flex-wrap:wrap;margin:28px 0 0}
-.stats-bar div{display:flex;flex-direction:column;gap:4px}
-.stats-bar b{font-family:Unbounded;font-size:30px;color:var(--acc)}
-.stats-bar span{color:var(--mute);font-size:13px}
-.lead{display:grid;gap:12px;max-width:480px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px}
-.lead input,.lead textarea{background:#0b0b0f;border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--text);font:15px Manrope;resize:vertical}
-.lead input:focus,.lead textarea:focus{outline:2px solid var(--acc);outline-offset:1px}
-.lead textarea{min-height:90px}
-#register-student-fields{display:grid;gap:12px}
-.lead .btn{justify-self:start;border:none;cursor:pointer;font:700 15px Manrope}
-.lead-status{color:var(--mute);font-size:14px;margin:0;min-height:1.2em}
-.partner-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--acc);color:var(--acc);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:700}
-.partner-card{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px;text-decoration:none}
-.partner-card:hover{border-color:var(--acc)}
-.partner-card img{width:84px;height:84px;border-radius:50%;object-fit:cover;flex:none}
-.partner-card div{flex:1;min-width:220px}.partner-card h3{font-size:20px;margin:8px 0 6px}.partner-card p{color:var(--mute);margin:0;font-size:15px}
-.partners{display:grid;gap:14px}
-/* Страницы партнёров Remus и Hunters: свой акцент поверх общей темы */
-#p-remus{--acc:#ecebf5;--glow:rgba(236,235,245,.18)}
-#p-hunters{--acc:#ff5361;--glow:rgba(214,38,52,.35)}
-.club-hero.themed{margin-top:32px;padding:40px 32px;border-radius:28px;border:1px solid var(--line);
-  background:radial-gradient(circle at 15% 0,var(--glow),transparent 55%),radial-gradient(circle at 100% 100%,rgba(91,49,189,.25),transparent 50%),var(--panel)}
-#p-remus .club-hero img{background:#000;border-color:#3a3a46}
-#p-hunters .club-hero img{background:#fff;border-color:#5a1820}
-.partner-form{max-width:none;margin:0}
-.partner-form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.partner-form label{display:grid;gap:6px;font-size:13px;color:var(--mute)}
-.partner-split{display:grid;grid-template-columns:1fr 1.1fr;gap:24px;align-items:start}
-.partner-split .pitch h2{font-size:clamp(24px,3vw,36px);margin-bottom:12px}
-.partner-split .pitch p{color:var(--mute);margin:0 0 14px}
-.partner-split .pitch ul{margin:0;padding-left:20px;color:#dcdce4;display:grid;gap:8px}
-@media(max-width:760px){.partner-split,.partner-form .row{grid-template-columns:1fr}.club-hero.themed{padding:28px 20px}}
-.club-hero{display:flex;gap:32px;align-items:center;flex-wrap:wrap;padding:56px 0 24px}
-.club-hero img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:3px solid var(--line);flex:none}
-.club-hero h1{font-size:clamp(34px,5vw,60px);font-weight:800;margin:14px 0 10px}
-.club-hero p{color:var(--mute);font-size:18px;max-width:36em;margin:0 0 22px}
-.hike{display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px}
-.hike .when{font-family:Unbounded;font-size:13px;color:var(--acc)}
-.hike h3{font-size:19px}.hike p{margin:0;color:var(--mute);font-size:14px}
-.hike .meta{display:flex;gap:6px;flex-wrap:wrap}
-.hike .meta span,.demo-tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:#dcdce4}
-.demo-tag{color:var(--mute);margin-left:8px;font-family:Manrope;font-weight:500}
-.spots{font-size:13px;color:var(--text)}
-.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--acc);border-radius:99px}
-.hike .btn{align-self:flex-start;margin-top:auto}
-.rules{display:grid;gap:10px;padding:0;margin:0;list-style:none}
-.rules li{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 18px;color:#dcdce4}
-.checklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
-.checklist label{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:11px 14px;cursor:pointer}
-.checklist input{accent-color:var(--acc);width:18px;height:18px;flex:none}
-details.lesson{background:var(--panel);border:1px solid var(--line);border-radius:16px;margin-bottom:10px}
-details.lesson summary{padding:16px 20px;cursor:pointer;font-weight:700;list-style:none}
-details.lesson summary::-webkit-details-marker{display:none}
-details.lesson[open] summary{color:var(--acc)}
-details.lesson ul{margin:0;padding:0 20px 18px 40px;color:#dcdce4;display:grid;gap:6px}
-.authbox{max-width:480px;margin:0 auto;display:grid;gap:14px}
-.authtabs{display:flex;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
-.authtab{flex:1;border:none;background:transparent;color:var(--mute);padding:10px;border-radius:999px;font:700 14px Manrope;cursor:pointer}
-.authtab.on{background:var(--acc);color:#050507}
-.gender-pick{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-.gender-pick label{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:9px 16px;cursor:pointer;font-size:14px}
-.gender-pick input{accent-color:var(--acc)}
-#chat-box{max-height:60vh;overflow-y:auto}
-.people-search{width:100%;max-width:480px;display:block;margin:0 auto 18px;background:#0b0b0f;border:1px solid var(--line);
- border-radius:999px;padding:12px 18px;color:var(--text);font:15px Manrope}
-.people-search:focus{outline:2px solid var(--acc);outline-offset:1px}
-.people-row{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);
- border:1px solid var(--line);border-radius:16px;padding:14px 18px;margin-bottom:8px}
-.people-row small{color:var(--mute);font-size:13px;display:block;margin-top:2px}
-.course-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:10px}
-.course-card h4{margin:0 0 4px;font-size:17px}
-.course-card .meta{color:var(--mute);font-size:13px;margin:0 0 10px}
-.course-card .actions{margin-top:10px}
-.mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
-.mini-form input,.mini-form select{background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope}
-.mini-form input[type="number"]{width:80px}
-.mini-form input[type="time"]{width:110px}
-.roster-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
-.roster-row:first-child{border-top:none}
-.grade-pill{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:#dcdce4;margin:2px 4px 2px 0;display:inline-block}
-.chat-input{display:flex;gap:10px;margin-top:14px}
-.chat-input input{flex:1;background:#0b0b0f;border:1px solid var(--line);border-radius:999px;padding:12px 18px;color:var(--text);font:15px Manrope}
-.chat-input input:focus{outline:2px solid var(--acc);outline-offset:1px}
-.chat-input .btn{border:none;cursor:pointer;padding:12px 22px}
-.chat-input #photo-btn{border-radius:999px;padding:10px 14px;cursor:pointer;font-size:17px;flex:none}
-.msg img{max-width:100%;border-radius:12px;display:block}
-.msg.reveal{align-self:center;background:rgba(167,139,250,.16);border:1px solid var(--acc);color:var(--acc);font-weight:700;font-size:14px;border-radius:14px}
-.empty .btn{margin-top:14px}
-footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding:28px 0 40px}
-@media(max-width:900px){.hero{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.feat{grid-template-columns:1fr}.tile.wide{grid-column:auto}}
-@media(max-width:520px){.steps{grid-template-columns:1fr}nav .btn{padding:8px 14px;font-size:13px}}
-</style>
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 <nav>
  <div class="wrap">
   <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>Pop<b>le</b></span></a>
   <button type="button" class="btn ghost" id="nav-menu-btn" aria-expanded="false" aria-controls="nav-drawer" hidden>☰ Меню</button>
-  <a class="btn" id="nav-auth-btn" href="#chat">Войти / Регистрация</a>
+  <a class="btn" id="nav-auth-btn" href="#login">Войти / Регистрация</a>
  </div>
- <div class="nav-drawer" id="nav-drawer">
-  <a class="tab" href="#home" data-p="home">О проекте</a>
-  <a class="tab" href="#clubs" data-p="clubs">Студенческие клубы</a>
-  <a class="tab" href="#events" data-p="events">Ивенты</a>
-  <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
-  <a class="tab" href="#remus" data-p="remus">🐺 Remus</a>
-  <a class="tab" href="#hunters" data-p="hunters">🦅 Hunters</a>
-  <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
-  <a class="tab" href="#people" data-p="people">🔎 Люди</a>
-  <a class="tab" href="#academics" data-p="academics">🎓 Учёба</a>
- </div>
+ <div class="nav-drawer" id="nav-drawer"></div>
 </nav>
 
 <main class="wrap">
-<!-- HOME -->
+<!-- ГЛАВНАЯ: гостю — лендинг, вошедшему — сводка «Сегодня» -->
 <div class="page" id="p-home">
+ <div id="home-dashboard" hidden>
+  <div class="greeting"><h1 id="dash-hello">Привет!</h1><p id="dash-date"></p></div>
+  <div class="quick" id="dash-quick"></div>
+  <div class="dash" id="dash-cards"><div class="empty">Загрузка…</div></div>
+ </div>
+
+ <div id="home-landing">
  <div class="hero">
   <div>
-   <h1>Пиши первым. Никто не узнает, кто ты.</h1>
-   <p>Pople — анонимный чат прямо на сайте для студентов AlmaU. Регистрируешься один раз, дальше — одна кнопка, и ты в разговоре с новым человеком. Захочешь познакомиться ближе — раскрой личность прямо в чате.</p>
+   <h1>Учёба и общение AlmaU — в одном месте.</h1>
+   <p>Pople — платформа для студентов: расписание, оценки, задания и экзамены рядом с анонимным чатом, сообщениями, клубами и ивентами. Один аккаунт вместо пяти сервисов, прямо в браузере.</p>
    <div class="actions">
-    <a class="btn" href="#chat" id="hero-auth-btn">Войти / Регистрация</a>
-    <a class="btn" href="#chat" id="hero-authed-btn" hidden>💬 Открыть анонимный чат</a>
+    <a class="btn" href="#login">Войти / Регистрация</a>
     <a class="btn ghost" href="#events">Смотреть ивенты</a>
    </div>
-   <p style="color:var(--mute);font-size:14px;margin:14px 0 0" id="hero-auth-note">Без регистрации анонимный чат и отметки «Иду» на ивентах недоступны — регистрация нужна один раз.</p>
+   <p class="muted small" style="margin:14px 0 0">Регистрация нужна один раз — без неё доступны только афиша и клубы.</p>
    <div class="stats-bar" id="stats" aria-live="polite"></div>
   </div>
   <div class="chat" aria-label="Пример анонимного диалога">
@@ -233,40 +56,40 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
    <div class="msg l" style="animation-delay:.8s">привет) ты тоже первый раз на акустике?</div>
    <div class="msg r" style="animation-delay:1.6s">да, одной идти было стрёмно ахах</div>
    <div class="msg l" style="animation-delay:2.4s">давай встретимся у входа в 18:50?</div>
-   <div class="msg sys" style="animation-delay:3.2s">🎓 Собеседник нажал «Раскрыть личность»: Аружан, 2 курс</div>
-   <div class="msg r" style="animation-delay:4s">📷 Фото</div>
-   <div class="msg sys" style="animation-delay:4.6s">Нашли друг друга — продолжайте в приложении</div>
+   <div class="msg sys" style="animation-delay:3.2s">🎓 Собеседник раскрылся: Аружан, 2 курс</div>
+   <div class="msg r" style="animation-delay:4s">ок! только рубежку в 16:00 сдам 😅</div>
   </div>
  </div>
 
  <section>
-  <div class="head"><div><h2>Как это работает</h2><p>От регистрации до первого сообщения — меньше минуты.</p></div></div>
-  <div class="steps">
-   <div class="step"><span>1</span><h3>Зарегистрируйся</h3><p>Имя, курс, специальность и пароль — один раз, прямо на сайте. Можно придумать анонимный ник.</p></div>
-   <div class="step"><span>2</span><h3>Подтверди почту</h3><p>Код из письма нужен один раз, чтобы подтвердить, что почта реально твоя.</p></div>
-   <div class="step"><span>3</span><h3>Найди собеседника</h3><p>Приложение подберёт свободного студента по полу — такого же, противоположного или любого.</p></div>
-   <div class="step"><span>4</span><h3>Раскройся, если хочешь</h3><p>Кнопка «Раскрыть личность» в чате покажет твоё настоящее имя собеседнику.</p></div>
-  </div>
- </section>
-
- <section>
-  <div class="head"><div><h2>Почему здесь проще начать разговор</h2></div></div>
+  <div class="head"><div><h2>Что внутри</h2><p>Всё, ради чего раньше приходилось открывать Platonus, Teams, Moodle и Telegram по отдельности.</p></div></div>
   <div class="feat">
-   <div><h3>Твоё имя скрыто</h3><p>Собеседник не видит имя, телефон и почту — только ник, если ты его придумал.</p></div>
-   <div><h3>Фото в чате<span class="new">NEW</span></h3><p>Можно отправить фото с телефона или ноута прямо в анонимном диалоге.</p></div>
-   <div><h3>Компания на ивент<span class="new">NEW</span></h3><p>Отметь «Иду» на ивенте — это видно в приложении и не привязано к имени.</p></div>
-   <div><h3>Контроль у тебя</h3><p>Раскрыть настоящее имя можно только по твоему нажатию кнопки в чате.</p></div>
-   <div><h3>Безопасно</h3><p>Кнопка «Стоп» завершает диалог в любой момент.</p></div>
-   <div><h3>Курс и специальность</h3><p>Указываешь при регистрации — помогает находить своих, но собеседнику не показывается без раскрытия.</p></div>
+   <div><h3>Расписание и оценки</h3><p>Пары по дням недели, оценки по дисциплинам и посещаемость с предупреждением о ретейке.</p></div>
+   <div><h3>Задания и уроки</h3><p>Преподаватель выкладывает задания и видеоуроки с конспектом, студент сдаёт работу и проходит мини-тест.</p></div>
+   <div><h3>Экзамены под контролем</h3><p>Таймер, подсчёт выходов из окна, запись экрана и снимки с камеры — по выбору преподавателя.</p></div>
+   <div><h3>Анонимный чат</h3><p>Соединяем со случайным студентом. Собеседник видит только ник — пока ты сам не раскроешься.</p></div>
+   <div><h3>Компания на ивент<span class="new">NEW</span></h3><p>Отметься «Иду» и найди, с кем пойти: подбираем среди тех, кто идёт туда же.</p></div>
+   <div><h3>Сообщения</h3><p>Найди человека по имени и напиши напрямую — однокурснику или преподавателю.</p></div>
   </div>
  </section>
 
  <section>
-  <div class="head"><div><h2>Правила</h2><p>Уважай собеседника. Без оскорблений, травли, спама и рекламы. Не публикуй чужие личные данные и откровенный контент. За нарушения — блокировка.</p></div></div>
+  <div class="head"><div><h2>Как начать</h2><p>От регистрации до первого сообщения — пара минут.</p></div></div>
+  <div class="steps">
+   <div class="step"><span>1</span><h3>Зарегистрируйся</h3><p>Имя, курс, специальность и пароль — один раз, прямо на сайте.</p></div>
+   <div class="step"><span>2</span><h3>Подтверди почту</h3><p>Код из письма подтверждает, что почта твоя. Он же поможет, если забудешь пароль.</p></div>
+   <div class="step"><span>3</span><h3>Запишись на дисциплины</h3><p>Выбери предметы и удобный день — расписание соберётся само.</p></div>
+   <div class="step"><span>4</span><h3>Общайся</h3><p>Анонимно, напрямую или в компании на ивент — как удобнее.</p></div>
+  </div>
  </section>
 
  <section>
-  <div class="head"><div><h2>Партнёры</h2><p>Клубы, которые работают с нами: афиша мероприятий и отметки «Иду» идут прямо через приложение.</p></div></div>
+  <div class="head"><div><h2>Безопасность</h2><p>Уважай собеседника: без оскорблений, травли, спама и чужих личных данных. На нарушителя можно пожаловаться прямо в чате — после жалоб от нескольких человек аккаунт блокируется автоматически. <a href="#privacy">Как мы храним данные →</a></p></div></div>
+ </section>
+ </div>
+
+ <section>
+  <div class="head"><div><h2>Партнёры</h2><p>Клубы, которые работают с нами: афиша, запись на походы и заявки идут прямо через Pople.</p></div></div>
   <div class="partners">
    <a class="partner-card" href="#summit">
     <img src="img/clubs/summit.jpg" alt="Логотип Summit Seekers">
@@ -290,17 +113,15 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </section>
 
  <section>
-  <div class="head"><div><h2>Хотите такое у себя?</h2><p>Оставьте заявку — расскажем, как подключить анонимный чат и афишу ивентов для вашего вуза или клуба.</p></div></div>
+  <div class="head"><div><h2>Хотите такое у себя?</h2><p>Оставьте заявку — расскажем, как подключить платформу для вашего вуза или клуба. Сюда же можно написать отзыв.</p></div></div>
   <form class="lead" id="lead-form">
    <input name="name" placeholder="Имя" required maxlength="80" autocomplete="name">
-   <input name="contact" placeholder="Telegram или почта" required maxlength="80" autocomplete="email">
+   <input name="contact" placeholder="Телефон или почта" required maxlength="80" autocomplete="email">
    <textarea name="message" placeholder="Коротко, что интересует" maxlength="300"></textarea>
    <button class="btn" type="submit">Отправить заявку</button>
-   <p class="lead-status" id="lead-status"></p>
+   <p class="lead-status" id="lead-status" aria-live="polite"></p>
   </form>
  </section>
-
- <section><div class="cta"><img class="mark" src="img/logo.png" alt="Логотип Pople"><h2>Твой следующий друг уже онлайн</h2><p>Один клик, и ты в разговоре.</p><a class="btn" href="#chat">Открыть чат</a></div></section>
 </div>
 
 <!-- CLUBS -->
@@ -328,7 +149,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </div>
 
  <section id="summit-hikes">
-  <div class="head"><div><h2>Ближайшие походы</h2><p>Запись на походы временно на паузе — переносим её из Telegram-бота прямо в приложение. Следите за Instagram клуба, чтобы не пропустить.</p></div></div>
+  <div class="head"><div><h2>Ближайшие походы</h2><p>Записывайся прямо здесь: имя и телефон берутся из твоего аккаунта, организатор увидит их в списке. Если мест нет — попадёшь в лист ожидания.</p></div></div>
   <div class="grid" id="hikes" aria-live="polite"></div>
  </section>
 
@@ -336,9 +157,9 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <div class="head"><div><h2>Как это работает</h2></div></div>
   <div class="steps">
    <div class="step"><span>1</span><h3>Выберите поход</h3><p>Дата, сбор, сложность и число свободных мест видны сразу.</p></div>
-   <div class="step"><span>2</span><h3>Запишитесь</h3><p>Запись переезжает в приложение — скоро можно будет оставить имя и телефон прямо здесь.</p></div>
-   <div class="step"><span>3</span><h3>Получите напоминания</h3><p>За сутки и за 3 часа: место сбора, прогноз погоды и список вещей.</p></div>
-   <div class="step"><span>4</span><h3>Отметьтесь после спуска</h3><p>Кнопка «Я спустился» сообщает организатору, что вы вернулись. Есть и кнопка SOS.</p></div>
+   <div class="step"><span>2</span><h3>Запишитесь</h3><p>Одна кнопка — и ты в списке. Запись можно отменить: место уйдёт следующему из листа ожидания.</p></div>
+   <div class="step"><span>3</span><h3>Держите под рукой</h3><p>Поход появится на твоей главной странице: дата, место сбора и статус записи.</p></div>
+   <div class="step"><span>4</span><h3>Отметьтесь после спуска</h3><p>Во время похода в карточке появляется кнопка «Я спустился» — она сообщает организатору, что вы вернулись.</p></div>
   </div>
  </section>
 
@@ -353,7 +174,7 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </section>
 
  <section>
-  <div class="head"><div><h2>Школа туризма</h2><p>Короткие уроки для тех, кто идёт в горы. Те же уроки есть в боте: команда /school.</p></div></div>
+  <div class="head"><div><h2>Школа туризма</h2><p>Короткие уроки для тех, кто идёт в горы.</p></div></div>
   <div id="lessons"></div>
  </section>
 
@@ -474,2056 +295,327 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
 <!-- EVENTS -->
 <div class="page" id="p-events">
  <section>
-  <div class="head"><div><h2>Ивенты и встречи со спикерами</h2><p>Отметься «Иду» — подбор компании на ивент скоро заработает прямо в приложении.</p></div>
+  <div class="head"><div><h2>Ивенты и встречи со спикерами</h2><p>Отметься «Иду» и нажми «Найти компанию» — анонимно соединим с тем, кто тоже ищет, с кем пойти.</p></div>
    <div class="filters" id="ef"></div></div>
   <div class="grid" id="events"></div>
  </section>
 </div>
 
-<!-- ЧАТ: анонимный чат прямо на сайте, без Telegram -->
-<div class="page" id="p-chat">
- <section id="chat-auth">
-  <div class="head"><div><h2>Анонимный чат</h2><p>Зарегистрируйся — мы анонимно соединим тебя с другим студентом. Имя, фамилию и телефон собеседник не видит.</p></div></div>
+<!-- ВХОД / РЕГИСТРАЦИЯ / СБРОС ПАРОЛЯ -->
+<div class="page" id="p-login">
+ <section>
   <div class="authbox">
-   <div class="authtabs">
+   <div class="authtabs" id="auth-tabs">
     <button type="button" class="authtab on" data-authtab="login">Войти</button>
     <button type="button" class="authtab" data-authtab="register">Регистрация</button>
    </div>
-   <form class="lead" id="login-form">
-    <input name="email" type="email" placeholder="Почта" required autocomplete="email">
-    <input name="password" type="password" placeholder="Пароль" required autocomplete="current-password">
-    <button class="btn" type="submit">Войти</button>
-    <p class="lead-status" id="login-status"></p>
-   </form>
-   <form class="lead" id="register-form" hidden>
-    <div class="gender-pick">
-     <label><input type="radio" name="account_type" value="student" checked> Студент</label>
-     <label><input type="radio" name="account_type" value="teacher"> Преподаватель</label>
-     <label><input type="radio" name="account_type" value="registrar"> Отдел расписания</label>
-    </div>
-    <input name="first_name" placeholder="Имя" required maxlength="80" autocomplete="given-name">
-    <input name="last_name" placeholder="Фамилия" required maxlength="80" autocomplete="family-name">
-    <input name="phone" placeholder="Телефон" required autocomplete="tel">
-    <input name="email" type="email" placeholder="Почта" required autocomplete="email">
-    <input name="password" type="password" placeholder="Пароль (мин. 6 символов)" required minlength="6" autocomplete="new-password">
-    <div id="register-student-fields">
-     <input name="course" placeholder="Курс (например, 2)" maxlength="120">
-     <input name="specialty" placeholder="Специальность" maxlength="120">
-     <input name="nickname" placeholder="Анонимный ник (необязательно)" maxlength="40">
-     <div class="gender-pick">
-      <label><input type="radio" name="gender" value="male"> Парень</label>
-      <label><input type="radio" name="gender" value="female"> Девушка</label>
+
+   <div id="auth-login">
+    <form class="lead" id="login-form">
+     <input name="email" type="email" placeholder="Почта" required autocomplete="email">
+     <label class="pw"><input name="password" type="password" placeholder="Пароль" required autocomplete="current-password">
+      <button type="button" data-toggle-password>Показать</button></label>
+     <button class="btn" type="submit">Войти</button>
+     <div id="login-verify" hidden class="stack">
+      <input id="login-code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+      <div class="row"><button class="btn" type="button" id="login-verify-btn">Подтвердить почту</button>
+       <button class="btn ghost sm" type="button" id="login-resend-btn">Отправить ещё раз</button></div>
      </div>
+     <p class="lead-status" id="login-status" aria-live="polite"></p>
+     <button type="button" class="linkbtn" id="forgot-link" style="justify-self:start">Забыли пароль?</button>
+    </form>
+   </div>
+
+   <div id="auth-register" hidden>
+    <form class="lead" id="register-form">
+     <div id="register-step1" class="stack">
+      <div class="gender-pick">
+       <label><input type="radio" name="account_type" value="student" checked> Студент</label>
+       <label><input type="radio" name="account_type" value="teacher"> Преподаватель</label>
+       <label><input type="radio" name="account_type" value="registrar"> Отдел расписания</label>
+      </div>
+      <input name="first_name" placeholder="Имя" required maxlength="80" autocomplete="given-name">
+      <input name="last_name" placeholder="Фамилия" required maxlength="80" autocomplete="family-name">
+      <input name="phone" type="tel" placeholder="Телефон, например +7 700 123 45 67" required minlength="7" maxlength="20" autocomplete="tel">
+      <input name="email" type="email" placeholder="Почта" required autocomplete="email">
+      <label class="pw"><input name="password" type="password" placeholder="Пароль (минимум 8 символов)" required minlength="8" maxlength="200" autocomplete="new-password">
+       <button type="button" data-toggle-password>Показать</button></label>
+      <div id="register-student-fields" class="stack">
+       <select name="course" aria-label="Курс">
+        <option value="">Курс…</option><option value="1">1 курс</option><option value="2">2 курс</option>
+        <option value="3">3 курс</option><option value="4">4 курс</option><option value="Магистратура">Магистратура</option>
+       </select>
+       <input name="specialty" placeholder="Специальность" maxlength="120">
+       <input name="nickname" placeholder="Ник для анонимного чата (необязательно)" maxlength="40">
+       <div class="gender-pick">
+        <label><input type="radio" name="gender" value="male"> Парень</label>
+        <label><input type="radio" name="gender" value="female"> Девушка</label>
+       </div>
+       <p class="hint">Пол нужен только для подбора собеседника в анонимном чате.</p>
+      </div>
+      <div id="register-staff-fields" class="stack" hidden>
+       <input name="invite_key" placeholder="Ключ-приглашение от администрации" maxlength="80" autocomplete="off">
+       <p class="hint">Ключ выдаёт администратор платформы. Он одноразово подтверждает, что вы сотрудник.</p>
+      </div>
+      <label class="check"><input type="checkbox" name="consent" required>
+       <span>Согласен(на) с правилами общения и с тем, <a href="#privacy" target="_blank" rel="noopener">как Pople хранит мои данные</a></span></label>
+      <button class="btn" type="submit" id="register-submit-btn">Зарегистрироваться</button>
+     </div>
+     <div id="register-step2" class="stack" hidden>
+      <input name="code" id="register-code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+      <div class="row"><button class="btn" type="button" id="register-verify-btn">Подтвердить почту</button>
+       <button class="btn ghost sm" type="button" id="register-resend-btn">Отправить ещё раз</button></div>
+      <button type="button" class="linkbtn" id="register-back-btn" style="justify-self:start">← Назад</button>
+      <p class="hint">Письмо идёт до минуты. Не пришло — проверь папку «Спам».</p>
+     </div>
+     <p class="lead-status" id="register-status" aria-live="polite"></p>
+    </form>
+   </div>
+
+   <div id="auth-forgot" hidden>
+    <div class="lead">
+     <h3 style="font-size:18px">Сброс пароля</h3>
+     <form id="forgot-form" class="stack">
+      <input name="email" type="email" placeholder="Почта, на которую зарегистрирован аккаунт" required autocomplete="email">
+      <button class="btn" type="submit">Прислать код</button>
+     </form>
+     <form id="reset-form" class="stack" hidden>
+      <input name="code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" required autocomplete="one-time-code">
+      <label class="pw"><input name="password" type="password" placeholder="Новый пароль (минимум 8 символов)" required minlength="8" maxlength="200" autocomplete="new-password">
+       <button type="button" data-toggle-password>Показать</button></label>
+      <button class="btn" type="submit">Сменить пароль и войти</button>
+     </form>
+     <p class="lead-status" id="forgot-status" aria-live="polite"></p>
+     <button type="button" class="linkbtn" id="forgot-back" style="justify-self:start">← Назад ко входу</button>
     </div>
-    <input name="invite_key" id="register-invite-key" placeholder="Ключ-приглашение от администрации" maxlength="80" hidden>
-    <button class="btn" type="submit" id="register-submit-btn">Зарегистрироваться</button>
-    <input name="code" id="register-code" placeholder="Код из письма (6 цифр)" inputmode="numeric" maxlength="6" autocomplete="one-time-code" hidden>
-    <button class="btn" type="button" id="register-verify-btn" hidden>Подтвердить почту</button>
-    <p class="lead-status" id="register-status"></p>
-   </form>
+   </div>
   </div>
+ </section>
+</div>
+
+<!-- АНОНИМНЫЙ ЧАТ -->
+<div class="page" id="p-chat">
+ <section id="chat-denied" hidden>
+  <div class="empty">Анонимный чат — для студенческих аккаунтов. Написать конкретному человеку можно в разделе «Сообщения».
+   <br><a class="btn sm" href="#people">Открыть сообщения</a></div>
  </section>
 
  <section id="chat-search" hidden>
-  <div class="head"><div><h2>Найти собеседника</h2><p>Кого ищешь?</p></div></div>
+  <div class="head"><div><h2>Анонимный чат</h2><p>Соединим со случайным студентом. Он увидит только твой ник — имя, телефон и почта скрыты, пока ты сам не нажмёшь «Раскрыть личность».</p></div></div>
   <div class="authbox">
-   <div class="gender-pick">
+   <div class="banner" id="chat-event-banner" hidden><span id="chat-event-banner-text"></span>
+    <button type="button" class="linkbtn" id="chat-event-cancel">искать без ивента</button></div>
+   <div class="gender-pick" role="radiogroup" aria-label="Кого искать">
     <label><input type="radio" name="preference" value="any" checked> Любой пол</label>
     <label><input type="radio" name="preference" value="same"> Такой же пол</label>
     <label><input type="radio" name="preference" value="opposite"> Противоположный пол</label>
    </div>
    <div class="actions" style="justify-content:center">
     <button class="btn" id="search-btn" type="button">🔍 Найти собеседника</button>
-    <button class="btn ghost" id="logout-btn" type="button">Выйти</button>
    </div>
+   <p class="hint" style="text-align:center">Переписка хранится 30 дней и потом удаляется. Ведёт себя плохо — жми «Пожаловаться».</p>
   </div>
  </section>
 
  <section id="chat-waiting" hidden>
-  <div class="empty">Ищем собеседника…<br><button class="btn ghost sm" id="cancel-search-btn" type="button">Отменить</button></div>
+  <div class="empty"><span id="chat-waiting-text">Ищем собеседника…</span>
+   <p class="muted small" style="margin:8px 0 0">Можно уйти на другую страницу — сообщим, когда кто-то найдётся.</p>
+   <button class="btn ghost sm" id="cancel-search-btn" type="button">Отменить поиск</button></div>
  </section>
 
  <section id="chat-room" hidden>
-  <div class="head"><div><h2 id="chat-partner-name">Анонимный собеседник</h2><p>Сообщения анонимны — ни твой телефон, ни фамилия ему не видны, пока кто-то не нажмёт «Раскрыть личность».</p></div>
+  <div class="head"><div><h2 id="chat-partner-name">Анонимный собеседник</h2>
+    <p><span id="chat-event-note"></span>Ни имя, ни телефон собеседнику не видны, пока кто-то не раскроет личность.</p></div>
    <div class="actions">
     <button class="btn ghost sm" id="reveal-btn" type="button">🎓 Раскрыть личность</button>
     <button class="btn ghost sm" id="next-btn" type="button">⏭ Следующий</button>
     <button class="btn ghost sm" id="stop-btn" type="button">⛔ Стоп</button>
+    <button class="btn danger sm" id="report-btn" type="button">⚠ Пожаловаться</button>
    </div>
   </div>
-  <div class="chat" id="chat-box" aria-live="polite"></div>
+  <div class="chat chat-box" id="chat-box" aria-live="polite"></div>
   <form class="chat-input" id="send-form">
-   <button class="btn ghost" id="photo-btn" type="button" title="Отправить фото">📷</button>
+   <button class="btn ghost icon" id="photo-btn" type="button" title="Отправить фото" aria-label="Отправить фото">📷</button>
    <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
-   <input name="text" id="chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000">
-   <button class="btn" type="submit">➤</button>
+   <input name="text" id="chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000" aria-label="Сообщение">
+   <button class="btn" type="submit" aria-label="Отправить">➤</button>
   </form>
  </section>
 </div>
 
-<!-- ЛЮДИ: поиск собеседника по ФИО — обычный, не анонимный чат. Одна из фич сайта наравне с анонимным чатом -->
+<!-- СООБЩЕНИЯ: поиск по ФИО и обычный (не анонимный) чат -->
 <div class="page" id="p-people">
- <section id="people-guard" hidden>
-  <div class="empty">Чтобы искать людей по имени, сначала войдите или зарегистрируйтесь.
-   <br><a class="btn sm" href="#chat" style="margin-top:14px;display:inline-block">Войти / Регистрация</a></div>
- </section>
-
  <section id="people-list">
-  <div class="head"><div><h2>Люди</h2><p>Все, кто зарегистрирован на платформе — ищи по имени и фамилии или листай список. Это обычный чат, не анонимный: тебя видно по имени.</p></div></div>
-  <input type="text" id="people-search-input" class="people-search" placeholder="Имя и фамилия…" autocomplete="off" maxlength="80">
-  <div id="people-results"></div>
-  <div class="head" style="margin-top:32px"><div><h2 style="font-size:22px">Мои диалоги</h2></div></div>
+  <div class="head"><div><h2>Сообщения</h2><p>Обычный чат, не анонимный: собеседник видит твоё имя. Напиши однокурснику или преподавателю.</p></div></div>
   <div id="people-dialogs"></div>
+  <div class="head" style="margin-top:32px"><div><h2 style="font-size:22px">Найти человека</h2></div></div>
+  <input type="text" id="people-search-input" class="people-search" placeholder="Имя и фамилия…" autocomplete="off" maxlength="80" aria-label="Поиск по имени">
+  <div id="people-results"></div>
  </section>
 
  <section id="people-chat" hidden>
-  <div class="head"><div><h2 id="people-chat-partner-name">Собеседник</h2><p>Обычный чат — видно твоё имя, курс и специальность.</p></div>
+  <div class="head"><div><h2 id="people-chat-partner-name">Собеседник</h2><p id="people-chat-sub"></p></div>
    <div class="actions">
-    <button class="btn ghost sm" id="people-back-btn" type="button">← К списку</button>
+    <button class="btn ghost sm" id="people-back-btn" type="button">← К диалогам</button>
+    <button class="btn ghost sm" id="people-block-btn" type="button">🚫 Заблокировать</button>
+    <button class="btn danger sm" id="people-report-btn" type="button">⚠ Пожаловаться</button>
    </div>
   </div>
-  <div class="chat" id="people-chat-box" aria-live="polite"></div>
+  <div class="chat chat-box" id="people-chat-box" aria-live="polite"></div>
   <form class="chat-input" id="people-send-form">
-   <input name="text" id="people-chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000">
-   <button class="btn" type="submit">➤</button>
+   <button class="btn ghost icon" id="people-photo-btn" type="button" title="Отправить фото" aria-label="Отправить фото">📷</button>
+   <input type="file" id="people-photo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+   <input name="text" id="people-chat-text" placeholder="Напиши сообщение…" autocomplete="off" maxlength="2000" aria-label="Сообщение">
+   <button class="btn" type="submit" aria-label="Отправить">➤</button>
   </form>
  </section>
 </div>
 
-<!-- УЧЁБА: расписание, оценки, запись на дисциплины — первый модуль учебной части -->
+<!-- УЧЁБА -->
 <div class="page" id="p-academics">
- <section id="academics-guard" hidden>
-  <div class="empty">Чтобы видеть расписание и оценки, сначала войдите или зарегистрируйтесь.
-   <br><a class="btn sm" href="#chat" style="margin-top:14px;display:inline-block">Войти / Регистрация</a></div>
+ <section>
+  <div class="head"><div><h2>Учёба</h2></div></div>
+  <div class="subtabs" id="acad-tabs"></div>
+  <div id="acad-body"></div>
  </section>
+</div>
 
- <section id="academics-main" hidden>
-  <div class="head"><div><h2>Учёба</h2><p>Твои дисциплины, расписание и оценки.</p></div></div>
+<!-- ПРОФИЛЬ -->
+<div class="page" id="p-profile">
+ <section>
+  <div class="head"><div><h2>Профиль</h2></div></div>
+  <div class="dash">
+   <div class="card">
+    <h3>Мои данные <span class="pill acc" id="profile-role"></span></h3>
+    <form class="form" id="profile-form">
+     <div class="cols"><label>Имя<input name="first_name" required maxlength="80" autocomplete="given-name"></label>
+      <label>Фамилия<input name="last_name" required maxlength="80" autocomplete="family-name"></label></div>
+     <div id="profile-student-fields" class="stack">
+      <div class="cols"><label>Курс<input name="course" maxlength="120"></label>
+       <label>Специальность<input name="specialty" maxlength="120"></label></div>
+      <label>Ник в анонимном чате<input name="nickname" maxlength="40"></label>
+     </div>
+     <p class="hint">Почта: <b id="profile-email"></b> · Телефон: <b id="profile-phone"></b><br>Их видишь только ты и администратор.</p>
+     <div><button class="btn" type="submit">Сохранить</button></div>
+     <p class="lead-status" id="profile-status" aria-live="polite"></p>
+    </form>
+   </div>
 
-  <div class="head" style="margin-top:8px"><div><h3 style="font-size:20px">Моё расписание</h3></div></div>
-  <div id="academics-schedule"></div>
+   <div class="card">
+    <h3>Пароль и вход</h3>
+    <form class="form" id="password-form">
+     <label>Текущий пароль<input name="current_password" type="password" required autocomplete="current-password"></label>
+     <label>Новый пароль (минимум 8 символов)<input name="new_password" type="password" required minlength="8" maxlength="200" autocomplete="new-password"></label>
+     <div><button class="btn" type="submit">Сменить пароль</button></div>
+     <p class="lead-status" id="password-status" aria-live="polite"></p>
+    </form>
+    <div class="actions" style="margin-top:8px">
+     <button type="button" class="btn ghost sm" id="logout-all-btn">Выйти на других устройствах</button>
+     <button type="button" class="btn ghost sm" id="logout-btn">↩ Выйти</button>
+    </div>
+   </div>
 
-  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Мои оценки</h3></div></div>
-  <div id="academics-grades"></div>
+   <div class="card">
+    <h3>Чёрный список</h3>
+    <div id="profile-blocks"></div>
+   </div>
 
-  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Моя посещаемость</h3></div></div>
-  <div id="academics-attendance"></div>
-
-  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Мои дисциплины</h3></div></div>
-  <div id="academics-my-courses"></div>
-
-  <div class="head" style="margin-top:28px"><div><h3 style="font-size:20px">Все дисциплины</h3><p>Запишись, чтобы дисциплина появилась в расписании и оценках.</p></div></div>
-  <div id="academics-all-courses"></div>
+   <div class="card">
+    <h3>Мои данные и удаление</h3>
+    <p class="muted small" style="margin:0 0 12px">Что и сколько мы храним — на странице <a href="#privacy">«Как мы храним данные»</a>. Аккаунт можно удалить вместе со всем, что с ним связано.</p>
+    <button type="button" class="btn danger sm" id="delete-account-btn">Удалить аккаунт</button>
+   </div>
+  </div>
  </section>
+</div>
 
- <section id="academics-teaching" hidden>
-  <div class="head" style="margin-top:36px"><div><h3 style="font-size:20px">Преподавание</h3><p>Видно только преподавателям и админам.</p></div></div>
+<!-- АДМИНКА -->
+<div class="page" id="p-admin">
+ <section>
+  <div class="head"><div><h2>Админка</h2><p>Видна только администраторам.</p></div></div>
+  <div class="tiles" id="admin-tiles"></div>
+  <div class="subtabs">
+   <button type="button" data-admin-tab="users">Пользователи</button>
+   <button type="button" data-admin-tab="reports">Жалобы</button>
+   <button type="button" data-admin-tab="keys">Ключи-приглашения</button>
+   <button type="button" data-admin-tab="leads">Заявки</button>
+   <button type="button" data-admin-tab="hikes">Походы</button>
+  </div>
+  <div id="admin-body"></div>
+ </section>
+</div>
 
-  <form class="lead" id="academics-create-course-form">
-   <input name="code" placeholder="Код дисциплины (напр. CS101)" required maxlength="20">
-   <input name="title" placeholder="Название" required maxlength="200">
-   <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"></textarea>
-   <button class="btn" type="submit">Создать дисциплину</button>
-   <p class="lead-status" id="academics-create-status"></p>
-  </form>
+<!-- КАК МЫ ХРАНИМ ДАННЫЕ -->
+<div class="page" id="p-privacy">
+ <section class="prose">
+  <h2>Как мы храним данные</h2>
+  <p>Pople — студенческий проект. Здесь простым языком написано, какие данные мы собираем, кто их видит и как их удалить.</p>
 
-  <div id="academics-teaching-courses"></div>
+  <h3>Что мы собираем</h3>
+  <ul>
+   <li><b>При регистрации:</b> имя, фамилию, телефон, почту, пароль; у студентов — курс, специальность, пол и ник для анонимного чата.</li>
+   <li><b>В чатах:</b> сообщения и фото, которые ты отправляешь.</li>
+   <li><b>В учёбе:</b> запись на дисциплины, оценки, посещаемость, сданные работы, результаты тестов и экзаменов.</li>
+   <li><b>На экзаменах</b> (только если преподаватель это включил): запись экрана, снимки с веб-камеры, число уходов из окна. Браузер каждый раз отдельно спрашивает разрешение — без него запись не начнётся.</li>
+   <li><b>Ивенты и походы:</b> отметки «Иду» и записи на походы.</li>
+  </ul>
+
+  <h3>Кто что видит</h3>
+  <ul>
+   <li>Имя, курс и специальность видят все вошедшие пользователи — в разделе «Сообщения».</li>
+   <li>Почту и телефон видишь только ты и администратор. Телефон также виден организаторам похода, на который ты записался.</li>
+   <li>В анонимном чате собеседник видит только ник. Ник нигде не показывается рядом с настоящим именем.</li>
+   <li>Оценки, сдачи, результаты, записи и снимки экзаменов видит преподаватель этой дисциплины и администратор.</li>
+   <li>Если на диалог пожаловались, администратор видит участников и последние сообщения этого диалога — чтобы разобраться. Переписки без жалоб он не читает.</li>
+  </ul>
+
+  <h3>Как защищаем</h3>
+  <ul>
+   <li>Пароли не хранятся — только их необратимые хеши (PBKDF2). Узнать твой пароль не можем даже мы.</li>
+   <li>Вход действует 30 дней, после смены или сброса пароля другие устройства выходят из аккаунта.</li>
+   <li>Перебор паролей и кодов ограничен: после нескольких неудачных попыток вход на время закрывается.</li>
+   <li>Соединение с сайтом и сервером шифруется (HTTPS).</li>
+  </ul>
+
+  <h3>Сколько храним</h3>
+  <ul>
+   <li>Анонимные переписки — 30 дней, затем удаляются автоматически.</li>
+   <li>Записи экрана и снимки камеры с экзаменов — 90 дней.</li>
+   <li>Регистрации, не подтвердившие почту, — 2 дня.</li>
+   <li>Имена и телефоны записавшихся на поход — 30 дней после похода.</li>
+   <li>Остальное — пока существует аккаунт.</li>
+  </ul>
+
+  <h3>Твои права</h3>
+  <ul>
+   <li>Изменить имя, курс, специальность и ник — в <a href="#profile">профиле</a>.</li>
+   <li>Удалить аккаунт — там же. Вместе с ним стираются переписки, оценки, сдачи, результаты и записи экзаменов.</li>
+  </ul>
+
+  <h3>Кому передаём</h3>
+  <p>Никому не продаём и не используем для рекламы. Чтобы платформа работала, данные проходят через сервисы: Brevo (отправка письма с кодом — ему передаётся только адрес почты), Railway (сервер и база данных) и Vercel (сам сайт). Cookies и рекламные трекеры мы не используем; вход запоминается в хранилище твоего браузера.</p>
+
+  <h3>Вопросы</h3>
+  <p>Напиши нам через <a href="#home" data-scroll="lead-form">форму на главной</a>. Pople не является официальным ресурсом Almaty Management University.</p>
  </section>
 </div>
 </main>
 
-<footer><div class="wrap">Pople — студенческий проект для AlmaU. Не является официальным ресурсом Almaty Management University.</div></footer>
-
-<script>
-// Адрес бэкенда (bot/api_server.py) — отдельный сервис, задеплоенный независимо от бота.
-// После деплоя заменить на свой домен вида https://<проект>.up.railway.app — см. README → раздел «API».
-const API = "https://almaumessanger-production.up.railway.app";
-
-// Подпись кнопки «Иду» между перезагрузками страницы — просто UX-подсказка,
-// реальная проверка и подсчёт всегда идут через авторизованный запрос на сервер.
-const isGoingLocally = id => { try { return localStorage.getItem("going:" + id) === "1"; } catch { return false; } };
-const setGoingLocally = (id, going) => { try { localStorage.setItem("going:" + id, going ? "1" : "0"); } catch {} };
-
-const G = ([a, b]) => `radial-gradient(circle at 70% 20%,${a},transparent 60%),linear-gradient(160deg,${b},#050507)`;
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-
-function filters(el, list, render) {
-  const tags = ["Все", ...new Set(list.map(x => x.category))];
-  el.innerHTML = tags.map((t, i) => `<button class="${i ? "" : "on"}" data-t="${esc(t)}">${esc(t)}</button>`).join("");
-  el.onclick = e => {
-    const b = e.target.closest("button"); if (!b) return;
-    el.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
-    render(b.dataset.t);
-  };
-}
-
-// Логотип, если он есть, иначе эмодзи
-const badge = (logo, emoji, name) => logo
-  ? `<img class="badge" src="${esc(logo)}" alt="Логотип ${esc(name)}" loading="lazy">`
-  : `<div class="glyph">${emoji}</div>`;
-let clubLogos = {};  // id клуба -> путь к логотипу, для карточек ивентов
-
-function clubTile(c) {
-  return `<article class="tile ${c.wide ? "wide" : ""}"><div class="art" style="background:${G(c.colors)}"></div>${badge(c.logo, c.emoji, c.name)}
-    ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
-    <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
-    <div class="chips">${c.partner ? `<span>🤝 Партнёр Pople</span>` : ""}${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div>
-    ${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">${esc(c.cta || "🏔 Походы и запись")}</a>` : ""}</article>`;
-}
-
-function eventTile(e) {
-  const going = isGoingLocally(e.id);
-  return `<article class="tile ev ${e.wide ? "wide" : ""}" data-id="${esc(e.id)}"><div class="art" style="background:${G(e.colors)}"></div>${badge(clubLogos[e.club], e.emoji, e.host)}
-    <div class="date">${esc(e.date)}</div><h3>${esc(e.title)}</h3><p>${esc(e.description)}</p>
-    <div class="who">${esc(e.host)}<span class="going-count"></span></div>
-    <div class="actions">
-      <button type="button" class="btn sm ghost going-btn" data-going="${going ? 1 : 0}">${going ? "✅ Иду" : "Отметиться, что иду"}</button>
-    </div></article>`;
-}
-
-// Клик по «Отметиться, что иду» шлёт отметку прямо в API сайта — без Telegram,
-// но требует аккаунт из вкладки «Анонимный чат» (анонимно отмечаться больше нельзя).
-document.addEventListener("click", async e => {
-  const btn = e.target.closest(".going-btn");
-  if (!btn) return;
-  if (!chatToken) {
-    alert("Чтобы отметиться на ивент, сначала войдите или зарегистрируйтесь во вкладке «Анонимный чат».");
-    location.hash = "#chat";
-    return;
-  }
-  const tile = btn.closest(".tile");
-  const id = tile.dataset.id;
-  const going = btn.dataset.going !== "1";
-  btn.disabled = true;
-  try {
-    const r = await chatFetch(`/api/events/${encodeURIComponent(id)}/going`, {
-      method: "POST",
-      body: JSON.stringify({going}),
-    });
-    if (!r.ok) throw new Error("going");
-    const data = await r.json();
-    setGoingLocally(id, going);
-    btn.dataset.going = going ? "1" : "0";
-    btn.textContent = going ? "✅ Иду" : "Отметиться, что иду";
-    const countEl = tile.querySelector(".going-count");
-    if (countEl) countEl.textContent = ` · идут: ${data.count}`;
-  } catch {
-    alert("Не получилось отметиться — бэкенд недоступен. Попробуйте позже.");
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-// Живые цифры с бэкенда (/api/stats). Если API недоступен, блок просто скрывается —
-// сайт на статичных данных остаётся рабочим.
-async function loadStats() {
-  const el = document.getElementById("stats");
-  if (!el) return;
-  try {
-    const r = await fetch(API + "/api/stats");
-    if (!r.ok) throw new Error("stats");
-    const s = await r.json();
-    el.innerHTML = `
-      <div><b>${s.users}</b><span>студентов в боте</span></div>
-      <div><b>${s.dialogs_total}</b><span>анонимных диалогов</span></div>
-      <div><b>${s.event_dialogs}</b><span>нашли компанию на ивент</span></div>`;
-  } catch {
-    el.remove();
-  }
-}
-
-// Дополняет уже отрисованные карточки ивентов количеством «Иду», отмеченных через сайт (/api/events).
-async function enhanceEventsWithGoing() {
-  try {
-    const r = await fetch(API + "/api/events");
-    if (!r.ok) throw new Error("events");
-    const live = await r.json();
-    const goingById = Object.fromEntries(live.map(e => [e.id, e.going]));
-    document.querySelectorAll("#events .tile.ev").forEach(tile => {
-      const n = goingById[tile.dataset.id];
-      const countEl = tile.querySelector(".going-count");
-      if (n != null && countEl) countEl.textContent = ` · идут: ${n}`;
-    });
-  } catch { /* бэкенд недоступен — карточки остаются как есть */ }
-}
-
-function initLeadForm() {
-  const form = document.getElementById("lead-form");
-  const status = document.getElementById("lead-status");
-  if (!form) return;
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    status.textContent = "Отправляем…";
-    const payload = Object.fromEntries(new FormData(form).entries());
-    try {
-      const r = await fetch(API + "/api/leads", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error("lead");
-      status.textContent = "Спасибо! Мы скоро свяжемся с вами.";
-      form.reset();
-    } catch {
-      status.textContent = "Не получилось отправить. Попробуйте ещё раз чуть позже.";
-    }
-  });
-}
-
-function mount(listId, filterId, items, tile, onRendered) {
-  const render = (t = "Все") => {
-    document.getElementById(listId).innerHTML = items.filter(x => t === "Все" || x.category === t).map(tile).join("");
-    if (onRendered) onRendered();
-  };
-  filters(document.getElementById(filterId), items, render);
-  render();
-}
-
-// Клубы и ивенты лежат в data/*.json — эти же файлы читает Telegram-бот
-async function load() {
-  try {
-    const [clubs, events] = await Promise.all(["data/clubs.json", "data/events.json"].map(u => fetch(u).then(r => {
-      if (!r.ok) throw new Error(u);
-      return r.json();
-    })));
-    clubLogos = Object.fromEntries(clubs.filter(c => c.logo).map(c => [c.id, c.logo]));
-    mount("clubs", "cf", clubs, clubTile);
-    mount("events", "ef", events, eventTile, enhanceEventsWithGoing);
-  } catch (err) {
-    const msg = `<div class="empty">Не удалось загрузить данные. Откройте сайт через веб-сервер (см. README), а не как файл.</div>`;
-    document.getElementById("clubs").innerHTML = msg;
-    document.getElementById("events").innerHTML = msg;
-  }
-}
-
-// ---------- Summit Seekers (партнёр) ----------
-const MONTHS = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
-const WEEKDAYS = ["вс","пн","вт","ср","чт","пт","сб"];
-// «2026-10-24T07:00» → «24 октября, сб, 07:00». Разбираем строку вручную, чтобы часовой пояс браузера ничего не сдвигал.
-function fmtStart(iso) {
-  const [date, time = ""] = iso.split("T");
-  const [y, m, d] = date.split("-").map(Number);
-  return `${d} ${MONTHS[m - 1]}, ${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}, ${time.slice(0, 5)}`;
-}
-
-function hikeCard(h) {
-  const live = h.going != null;
-  const full = live && h.spots_left <= 0;
-  const spots = !live ? `Мест: ${h.capacity}`
-    : full ? `Мест нет, в листе ожидания: ${h.waitlist}` : `Осталось ${h.spots_left} из ${h.capacity} мест`;
-  const pct = live ? Math.min(100, Math.round(h.going * 100 / h.capacity)) : 0;
-  return `<article class="hike">
-    <div class="when">${esc(fmtStart(h.start))}</div>
-    <h3>${esc(h.title)}${h.demo ? `<span class="demo-tag">Пример</span>` : ""}</h3>
-    ${h.route ? `<p>${esc(h.route)}</p>` : ""}
-    <div class="meta"><span>🥾 ${esc(h.difficulty)}</span><span>⏱ ~${esc(String(h.duration_hours).replace(".", ","))} ч</span><span>💰 ${esc(h.price)}</span></div>
-    <p>📍 Сбор: ${esc(h.meeting_point || "уточняется")}</p>
-    <div class="spots">${esc(spots)}</div>
-    ${live ? `<div class="bar" aria-hidden="true"><i style="width:${pct}%"></i></div>` : ""}
-  </article>`;
-}
-
-async function fetchJson(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(url);
-  return r.json();
-}
-
-// Живые данные берём из API (там считаются свободные места). Если API недоступен, показываем походы из data/hikes.json.
-async function loadHikes() {
-  const box = document.getElementById("hikes");
-  let hikes;
-  try {
-    hikes = await fetchJson(`${API}/api/hikes?club=summit`);
-  } catch {
-    try {
-      const now = new Date();
-      hikes = (await fetchJson("data/hikes.json")).filter(h => h.club === "summit" && new Date(h.start) > now);
-    } catch {
-      box.innerHTML = `<div class="empty">Не удалось загрузить походы. Попробуйте позже.</div>`;
-      return;
-    }
-  }
-  box.innerHTML = hikes.length ? hikes.map(hikeCard).join("")
-    : `<div class="empty">Ближайшие походы скоро появятся. Подпишитесь на Instagram клуба, чтобы не пропустить.</div>`;
-}
-
-const gearKey = i => "gear:" + i;
-function renderSchool(school) {
-  document.getElementById("safety").innerHTML = school.safety.map(t => `<li>${esc(t)}</li>`).join("");
-  const checked = i => { try { return localStorage.getItem(gearKey(i)) === "1"; } catch { return false; } };
-  document.getElementById("gear").innerHTML = school.gear.map((g, i) =>
-    `<label><input type="checkbox" data-gear="${i}" ${checked(i) ? "checked" : ""}> ${esc(g)}</label>`).join("");
-  document.getElementById("lessons").innerHTML = school.lessons.map(l =>
-    `<details class="lesson"><summary>${l.emoji} ${esc(l.title)}</summary><ul>${l.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></details>`).join("");
-}
-document.addEventListener("change", e => {
-  const box = e.target.closest("[data-gear]");
-  if (box) { try { localStorage.setItem(gearKey(box.dataset.gear), box.checked ? "1" : "0"); } catch {} }
-});
-document.addEventListener("click", e => {
-  const link = e.target.closest("[data-scroll]");
-  if (!link) return;
-  e.preventDefault();
-  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  document.getElementById(link.dataset.scroll)?.scrollIntoView({behavior: calm ? "auto" : "smooth"});
-});
-
-let schoolLoaded = false;
-async function loadSummit() {
-  loadHikes();
-  if (schoolLoaded) return;
-  try {
-    renderSchool(await fetchJson("data/school.json"));
-    schoolLoaded = true;
-  } catch {
-    document.getElementById("lessons").innerHTML = `<div class="empty">Не удалось загрузить уроки. Откройте сайт через веб-сервер.</div>`;
-  }
-}
-
-// ---------- Remus и Hunters (партнёры) ----------
-// Билеты на DTMM и запись волонтёров идут заявками в тот же POST /api/leads, что и форма
-// на главной: у заявки свой event_id ("dtmm" / "open-day"), поэтому в /leads у бота и в
-// GET /api/leads их легко отличить. Если API недоступен — честно говорим об этом и даём Instagram клуба.
-function initPartnerForm(formId, statusId, eventId, buildMessage, fallbackIg) {
-  const form = document.getElementById(formId);
-  const status = document.getElementById(statusId);
-  if (!form) return;
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const btn = form.querySelector("button[type=submit]");
-    const data = Object.fromEntries(new FormData(form).entries());
-    const payload = {
-      name: String(data.name || "").trim(),
-      contact: String(data.contact || "").trim(),
-      message: buildMessage(data).slice(0, 300),
-      event_id: eventId,
-    };
-    status.textContent = "Отправляем…";
-    btn.disabled = true;
-    try {
-      const r = await fetch(API + "/api/leads", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error("lead");
-      status.textContent = "Готово! Организаторы скоро с тобой свяжутся.";
-      form.reset();
-    } catch {
-      status.innerHTML = `Не получилось отправить заявку. Напиши клубу в Instagram: <a href="https://instagram.com/${esc(fallbackIg)}" target="_blank" rel="noopener">@${esc(fallbackIg)}</a>`;
-    } finally {
-      btn.disabled = false;
-    }
-  });
-}
-
-function prefillPartnerForms() {
-  if (!chatUser) return;
-  const full = [chatUser.first_name, chatUser.last_name].filter(Boolean).join(" ");
-  for (const id of ["remus-ticket-form", "hunters-volunteer-form"]) {
-    const input = document.querySelector(`#${id} input[name=name]`);
-    if (input && !input.value) input.value = full;
-  }
-  const course = document.querySelector("#hunters-volunteer-form input[name=course]");
-  if (course && !course.value && (chatUser.course || chatUser.specialty)) {
-    course.value = [chatUser.course ? `${chatUser.course} курс` : "", chatUser.specialty || ""].filter(Boolean).join(", ");
-  }
-}
-
-function clubEventCard(e) {
-  return `<article class="hike">
-    <div class="when">${esc(e.date)}</div>
-    <h3>${e.emoji} ${esc(e.title)}</h3>
-    <p>${esc(e.description)}</p>
-  </article>`;
-}
-
-let partnerEvents = null;
-async function partnerEventsList() {
-  if (!partnerEvents) partnerEvents = await fetchJson("data/events.json");
-  return partnerEvents;
-}
-
-async function loadRemus() {
-  prefillPartnerForms();
-  const box = document.getElementById("remus-events");
-  const dtmm = `<article class="hike">
-    <div class="when">Дата — у организаторов</div>
-    <h3>🎫 DTMM</h3>
-    <p>Главный ивент стаи Remus. Билеты — по заявке прямо здесь.</p>
-    <a class="btn sm" href="#remus" data-scroll="remus-tickets">Купить билет на DTMM</a>
-  </article>`;
-  try {
-    const events = (await partnerEventsList()).filter(e => e.club === "remus");
-    box.innerHTML = dtmm + events.map(clubEventCard).join("");
-  } catch {
-    box.innerHTML = dtmm;
-  }
-}
-
-async function loadHunters() {
-  prefillPartnerForms();
-  try {
-    const openDay = (await partnerEventsList()).find(e => e.id === "open-day");
-    const el = document.getElementById("hunters-openday-date");
-    if (openDay && el && !el.dataset.filled) {
-      el.textContent += ` Ближайший Open Day: ${openDay.date}.`;
-      el.dataset.filled = "1";
-    }
-  } catch {}
-}
-
-function initPartners() {
-  initPartnerForm("remus-ticket-form", "remus-ticket-status", "dtmm",
-    d => `Билет на DTMM × ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))}${d.note ? `. ${String(d.note).trim()}` : ""}`,
-    "remus.almaty");
-  initPartnerForm("hunters-volunteer-form", "hunters-volunteer-status", "open-day",
-    d => `Волонтёр на день открытых дверей (Hunters)${d.course ? ` · ${String(d.course).trim()}` : ""}${d.note ? `. ${String(d.note).trim()}` : ""}`,
-    "almau_hunters");
-}
-
-// ---------- Анонимный чат на сайте (свои аккаунты, без Telegram) ----------
-let chatToken = null, chatUser = null, chatDialogId = null, chatSince = 0, pollTimer = null;
-
-function closeNavDrawer() {
-  document.getElementById("nav-drawer").classList.remove("open");
-  document.getElementById("nav-menu-btn").setAttribute("aria-expanded", "false");
-}
-function toggleNavDrawer() {
-  const open = document.getElementById("nav-drawer").classList.toggle("open");
-  document.getElementById("nav-menu-btn").setAttribute("aria-expanded", open ? "true" : "false");
-}
-// Вкладки (клубы, ивенты, чат и всё, что добавим позже) видны только после входа —
-// до этого в навбаре только одна кнопка «Войти / Регистрация», сразу заметная.
-// То же самое для копии этой кнопки в hero на главной — иначе после входа и редиректа
-// на главную там всё ещё видна «Войти / Регистрация», будто вход не сработал.
-function updateNavAuthUI() {
-  const authed = !!chatToken;
-  document.getElementById("nav-auth-btn").hidden = authed;
-  document.getElementById("nav-menu-btn").hidden = !authed;
-  if (!authed) closeNavDrawer();
-
-  const heroAuthBtn = document.getElementById("hero-auth-btn");
-  const heroAuthedBtn = document.getElementById("hero-authed-btn");
-  const heroAuthNote = document.getElementById("hero-auth-note");
-  if (heroAuthBtn) heroAuthBtn.hidden = authed;
-  if (heroAuthedBtn) heroAuthedBtn.hidden = !authed;
-  if (heroAuthNote) heroAuthNote.hidden = authed;
-}
-
-function saveChatSession(token, user) {
-  chatToken = token; chatUser = user;
-  try { localStorage.setItem("chat_token", token); localStorage.setItem("chat_user", JSON.stringify(user)); } catch {}
-  updateNavAuthUI();
-}
-function clearChatSession() {
-  chatToken = null; chatUser = null;
-  try { localStorage.removeItem("chat_token"); localStorage.removeItem("chat_user"); } catch {}
-  updateNavAuthUI();
-}
-function loadChatSession() {
-  try {
-    const t = localStorage.getItem("chat_token"), u = localStorage.getItem("chat_user");
-    if (t && u) { chatToken = t; chatUser = JSON.parse(u); }
-  } catch {}
-  updateNavAuthUI();
-}
-
-function chatSection(id) {
-  ["chat-auth", "chat-search", "chat-waiting", "chat-room"].forEach(s => {
-    document.getElementById(s).hidden = s !== id;
-  });
-}
-
-async function chatFetch(path, opts = {}) {
-  const headers = Object.assign({"Content-Type": "application/json"}, opts.headers || {});
-  if (chatToken) headers.Authorization = `Bearer ${chatToken}`;
-  const r = await fetch(API + path, Object.assign({}, opts, {headers}));
-  if (r.status === 401) { clearChatSession(); stopChatPolling(); chatSection("chat-auth"); throw new Error("unauthorized"); }
-  return r;
-}
-
-function currentPreference() {
-  return document.querySelector('input[name="preference"]:checked')?.value || "any";
-}
-
-function initAuthTabs() {
-  document.querySelectorAll("[data-authtab]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("[data-authtab]").forEach(b => b.classList.toggle("on", b === btn));
-      document.getElementById("login-form").hidden = btn.dataset.authtab !== "login";
-      document.getElementById("register-form").hidden = btn.dataset.authtab !== "register";
-    });
-  });
-}
-
-// Для входа (email+пароль): сервер сразу отдаёт {token, user}.
-function handleLoginForm(form, statusId) {
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const status = document.getElementById(statusId);
-    status.textContent = "Подождите…";
-    const data = Object.fromEntries(new FormData(form).entries());
-    try {
-      const r = await fetch(API + "/api/chat/login", {
-        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
-      });
-      if (!r.ok) {
-        const reasons = {
-          401: "Неверная почта или пароль",
-          403: "Почта ещё не подтверждена — проверьте письмо с кодом при регистрации",
-        };
-        status.textContent = reasons[r.status] || "Не получилось войти.";
-        return;
-      }
-      const body = await r.json();
-      saveChatSession(body.token, body.user);
-      status.textContent = "";
-      form.reset();
-      chatSection("chat-search");  // подготавливаем вкладку чата к следующему разу, но не открываем её сразу
-      location.hash = "#home";
-    } catch {
-      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
-    }
-  });
-}
-
-// Регистрация в два шага: 1) создать аккаунт (пароль, без токена) 2) ввести код из письма,
-// чтобы подтвердить почту и получить токен.
-// Студенческие поля (курс/специальность/пол/ник) нужны только студенту — преподавателю и
-// отделу расписания вместо них нужен ключ-приглашение, который даёт роль.
-function updateRegisterFieldsVisibility(form) {
-  const type = form.querySelector('input[name="account_type"]:checked')?.value || "student";
-  const isStudent = type === "student";
-  const studentFields = document.getElementById("register-student-fields");
-  const inviteKey = document.getElementById("register-invite-key");
-  studentFields.hidden = !isStudent;
-  inviteKey.hidden = isStudent;
-  studentFields.querySelectorAll('input[name="course"], input[name="specialty"]')
-    .forEach(el => { el.required = isStudent; });
-  studentFields.querySelectorAll('input[name="gender"]').forEach(el => { el.required = isStudent; });
-  inviteKey.required = !isStudent;
-}
-
-function initRegisterForm() {
-  const form = document.getElementById("register-form");
-  const status = document.getElementById("register-status");
-  const submitBtn = document.getElementById("register-submit-btn");
-  const codeInput = document.getElementById("register-code");
-  const verifyBtn = document.getElementById("register-verify-btn");
-  let pendingEmail = null;
-
-  updateRegisterFieldsVisibility(form);
-  form.querySelectorAll('input[name="account_type"]').forEach(r =>
-    r.addEventListener("change", () => updateRegisterFieldsVisibility(form)));
-
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    status.textContent = "Подождите…";
-    const data = Object.fromEntries(new FormData(form).entries());
-    try {
-      const r = await fetch(API + "/api/chat/register", {
-        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
-      });
-      if (!r.ok) {
-        const reasons = {
-          409: "Этот телефон или почта уже зарегистрированы",
-          403: "Неверный или устаревший ключ-приглашение — уточните у администрации",
-        };
-        status.textContent = reasons[r.status] || "Не получилось. Проверьте данные (имя, телефон, почта, пароль от 6 символов, курс, специальность).";
-        return;
-      }
-      const body = await r.json();
-      pendingEmail = body.email;
-      status.textContent = "Код отправлен на почту. Введите его ниже, чтобы подтвердить.";
-      submitBtn.hidden = true;
-      codeInput.hidden = false;
-      verifyBtn.hidden = false;
-      codeInput.focus();
-    } catch {
-      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
-    }
-  });
-
-  verifyBtn.addEventListener("click", async () => {
-    const code = codeInput.value.trim();
-    if (!code || !pendingEmail) return;
-    status.textContent = "Проверяем код…";
-    try {
-      const r = await fetch(API + "/api/chat/otp/verify", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({email: pendingEmail, code}),
-      });
-      if (!r.ok) {
-        status.textContent = r.status === 403 ? "Слишком много попыток — зарегистрируйтесь заново."
-          : "Неверный или устаревший код.";
-        return;
-      }
-      const body = await r.json();
-      saveChatSession(body.token, body.user);
-      status.textContent = "";
-      form.reset();
-      updateRegisterFieldsVisibility(form);
-      submitBtn.hidden = false;
-      codeInput.hidden = true;
-      verifyBtn.hidden = true;
-      pendingEmail = null;
-      chatSection("chat-search");  // подготавливаем вкладку чата к следующему разу, но не открываем её сразу
-      location.hash = "#home";
-    } catch {
-      status.textContent = "Бэкенд недоступен. Попробуйте позже.";
-    }
-  });
-}
-
-function stopChatPolling() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-}
-function startChatPolling() {
-  stopChatPolling();
-  pollTimer = setInterval(pollChat, 2500);
-}
-
-function setChatPartnerName(nickname) {
-  const el = document.getElementById("chat-partner-name");
-  if (el) el.textContent = nickname ? `Собеседник: ${nickname}` : "Анонимный собеседник";
-}
-
-function renderChatMessages(messages) {
-  if (!messages.length) return;
-  const box = document.getElementById("chat-box");
-  for (const m of messages) {
-    const div = document.createElement("div");
-    if (m.kind === "photo") {
-      div.className = "msg " + (m.mine ? "r" : "l");
-      div.style.padding = "4px";
-      const img = document.createElement("img");
-      img.alt = "Фото из чата";
-      img.loading = "lazy";
-      div.appendChild(img);
-      chatFetch(`/api/chat/photo/${m.photo_id}`).then(r => r.blob()).then(blob => {
-        img.src = URL.createObjectURL(blob);
-      }).catch(() => {});
-    } else if (m.kind === "reveal") {
-      div.className = "msg reveal";
-      div.textContent = (m.mine ? "Вы раскрыли личность: " : "Собеседник раскрылся: ") + m.text;
-    } else {
-      div.className = "msg " + (m.mine ? "r" : "l");
-      div.textContent = m.text;
-    }
-    box.appendChild(div);
-    chatSince = Math.max(chatSince, m.id);
-  }
-  box.scrollTop = box.scrollHeight;
-}
-
-function enterChatRoom(dialogId, partnerNickname) {
-  chatDialogId = dialogId;
-  chatSince = 0;
-  document.getElementById("chat-box").innerHTML = "";
-  setChatPartnerName(partnerNickname);
-  chatSection("chat-room");
-  startChatPolling();
-}
-
-async function pollChat() {
-  try {
-    const r = await chatFetch(`/api/chat/poll?since=${chatSince}`);
-    const body = await r.json();
-    if (body.status === "matched") {
-      if (chatDialogId !== body.dialog_id) { chatDialogId = body.dialog_id; chatSince = 0; document.getElementById("chat-box").innerHTML = ""; chatSection("chat-room"); }
-      setChatPartnerName(body.partner_nickname);
-      renderChatMessages(body.messages);
-    } else if (body.status === "waiting") {
-      chatSection("chat-waiting");
-    } else if (chatDialogId) {
-      chatDialogId = null;
-      stopChatPolling();
-      chatSection("chat-search");
-      alert("Собеседник завершил диалог.");
-    }
-  } catch {}
-}
-
-async function startChatSearch() {
-  chatSection("chat-waiting");
-  try {
-    const r = await chatFetch("/api/chat/search", {method: "POST", body: JSON.stringify({preference: currentPreference()})});
-    const body = await r.json();
-    if (body.status === "matched") enterChatRoom(body.dialog_id, body.partner_nickname);
-    else startChatPolling();
-  } catch {}
-}
-
-async function sendPhoto(file) {
-  if (!chatDialogId || !file) return;
-  const reader = new FileReader();
-  const dataUrl = await new Promise((resolve, reject) => {
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-  const base64 = String(dataUrl).split(",", 2)[1] || "";
-  try {
-    await chatFetch("/api/chat/send-photo", {
-      method: "POST",
-      body: JSON.stringify({dialog_id: chatDialogId, content_type: file.type, data: base64}),
-    });
-    pollChat();
-  } catch {
-    alert("Не получилось отправить фото.");
-  }
-}
-
-function initNavDrawer() {
-  document.getElementById("nav-menu-btn").addEventListener("click", e => {
-    e.stopPropagation();
-    toggleNavDrawer();
-  });
-  document.getElementById("nav-drawer").addEventListener("click", e => {
-    if (e.target.closest(".tab")) closeNavDrawer();
-  });
-  document.addEventListener("click", e => {
-    if (e.target.closest("#nav-drawer") || e.target.closest("#nav-menu-btn")) return;
-    closeNavDrawer();
-  });
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape") closeNavDrawer();
-  });
-}
-
-function initChat() {
-  initNavDrawer();
-  loadChatSession();
-  initAuthTabs();
-  handleLoginForm(document.getElementById("login-form"), "login-status");
-  initRegisterForm();
-
-  document.getElementById("search-btn").addEventListener("click", startChatSearch);
-  document.getElementById("cancel-search-btn").addEventListener("click", async () => {
-    stopChatPolling();
-    try { await chatFetch("/api/chat/stop", {method: "POST"}); } catch {}
-    chatSection("chat-search");
-  });
-  document.getElementById("logout-btn").addEventListener("click", async () => {
-    try { await chatFetch("/api/chat/logout", {method: "POST"}); } catch {}
-    clearChatSession();
-    stopChatPolling();
-    chatSection("chat-auth");
-  });
-  document.getElementById("next-btn").addEventListener("click", async () => {
-    const preference = currentPreference();
-    stopChatPolling();
-    chatDialogId = null;
-    chatSection("chat-waiting");
-    try {
-      const r = await chatFetch("/api/chat/next", {method: "POST", body: JSON.stringify({preference})});
-      const body = await r.json();
-      if (body.status === "matched") enterChatRoom(body.dialog_id, body.partner_nickname);
-      else startChatPolling();
-    } catch {}
-  });
-  document.getElementById("stop-btn").addEventListener("click", async () => {
-    stopChatPolling();
-    chatDialogId = null;
-    try { await chatFetch("/api/chat/stop", {method: "POST"}); } catch {}
-    chatSection("chat-search");
-  });
-  document.getElementById("reveal-btn").addEventListener("click", async () => {
-    if (!chatDialogId) return;
-    try {
-      await chatFetch("/api/chat/reveal", {method: "POST", body: JSON.stringify({dialog_id: chatDialogId})});
-      pollChat();
-    } catch {}
-  });
-  document.getElementById("photo-btn").addEventListener("click", () => {
-    document.getElementById("photo-input").click();
-  });
-  document.getElementById("photo-input").addEventListener("change", e => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (file) sendPhoto(file);
-  });
-  document.getElementById("send-form").addEventListener("submit", e => {
-    e.preventDefault();
-    const input = document.getElementById("chat-text");
-    const text = input.value;
-    if (!text.trim() || !chatDialogId) return;
-    input.value = "";
-    chatFetch("/api/chat/send", {method: "POST", body: JSON.stringify({dialog_id: chatDialogId, text})})
-      .then(pollChat).catch(() => {});
-  });
-
-  if (!chatToken) { chatSection("chat-auth"); return; }
-  chatSection("chat-search");
-  chatFetch("/api/chat/poll").then(r => r.json()).then(body => {
-    if (body.status === "matched") enterChatRoom(body.dialog_id, body.partner_nickname);
-    else if (body.status === "waiting") { chatSection("chat-waiting"); startChatPolling(); }
-  }).catch(() => {});
-}
-
-// ---------- Люди: поиск по ФИО и обычный (не анонимный) чат с конкретным человеком ----------
-let peopleActiveDialogId = null, peopleSince = 0, peoplePollTimer = null, peopleSearchTimer = null;
-
-function stopPeoplePolling() { if (peoplePollTimer) { clearInterval(peoplePollTimer); peoplePollTimer = null; } }
-function startPeoplePolling() { stopPeoplePolling(); peoplePollTimer = setInterval(pollPeopleChat, 2500); }
-
-function peopleUserLabel(u) {
-  const extra = [u.course ? `${u.course} курс` : "", u.specialty].filter(Boolean).join(" · ");
-  const name = `${esc(u.first_name)} ${esc(u.last_name)}` + (u.nickname ? ` · ${esc(u.nickname)}` : "");
-  return extra ? `${name}<small>${esc(extra)}</small>` : name;
-}
-
-function renderPeopleResults(users) {
-  const box = document.getElementById("people-results");
-  box.innerHTML = users.map(u => `<div class="people-row"><span>${peopleUserLabel(u)}</span>
-    <button type="button" class="btn sm" data-start-direct="${u.id}">Написать</button></div>`).join("");
-}
-
-function renderPeopleDialogs(dialogs) {
-  const box = document.getElementById("people-dialogs");
-  if (!dialogs.length) { box.innerHTML = `<div class="empty">Пока нет диалогов — найдите кого-нибудь выше.</div>`; return; }
-  box.innerHTML = dialogs.map(d => `<div class="people-row"><span>${peopleUserLabel(d.partner)}</span>
-    <button type="button" class="btn ghost sm" data-open-direct="${esc(d.dialog_id)}"
-      data-partner="${esc(d.partner.first_name + " " + d.partner.last_name)}">Открыть</button></div>`).join("");
-}
-
-async function loadPeopleDialogs() {
-  try {
-    const r = await chatFetch("/api/chat/direct/list");
-    renderPeopleDialogs((await r.json()).dialogs);
-  } catch {}
-}
-
-// Пустой запрос — весь список зарегистрированных (справочник), иначе — фильтр по ФИО.
-async function loadPeopleResults(q) {
-  try {
-    const r = await chatFetch(`/api/chat/direct/search-users?q=${encodeURIComponent(q)}`);
-    renderPeopleResults((await r.json()).users);
-  } catch {}
-}
-
-function initPeopleSearch() {
-  document.getElementById("people-search-input").addEventListener("input", e => {
-    clearTimeout(peopleSearchTimer);
-    const q = e.target.value.trim();
-    peopleSearchTimer = setTimeout(() => loadPeopleResults(q), 300);
-  });
-}
-
-function openDirectChat(dialogId, partnerName) {
-  peopleActiveDialogId = dialogId;
-  peopleSince = 0;
-  document.getElementById("people-chat-box").innerHTML = "";
-  document.getElementById("people-chat-partner-name").textContent = partnerName || "Собеседник";
-  document.getElementById("people-list").hidden = true;
-  document.getElementById("people-chat").hidden = false;
-  pollPeopleChat();
-  startPeoplePolling();
-}
-
-function closeDirectChat() {
-  stopPeoplePolling();
-  peopleActiveDialogId = null;
-  document.getElementById("people-chat").hidden = true;
-  document.getElementById("people-list").hidden = false;
-  loadPeopleDialogs();
-}
-
-function renderPeopleMessages(messages) {
-  if (!messages.length) return;
-  const box = document.getElementById("people-chat-box");
-  for (const m of messages) {
-    const div = document.createElement("div");
-    div.className = "msg " + (m.mine ? "r" : "l");
-    div.textContent = m.text || "";
-    box.appendChild(div);
-    peopleSince = Math.max(peopleSince, m.id);
-  }
-  box.scrollTop = box.scrollHeight;
-}
-
-async function pollPeopleChat() {
-  if (!peopleActiveDialogId) return;
-  try {
-    const r = await chatFetch(`/api/chat/direct/poll?dialog_id=${encodeURIComponent(peopleActiveDialogId)}&since=${peopleSince}`);
-    renderPeopleMessages((await r.json()).messages);
-  } catch {}
-}
-
-function initPeople() {
-  initPeopleSearch();
-  document.getElementById("people-back-btn").addEventListener("click", closeDirectChat);
-  document.addEventListener("click", e => {
-    const startBtn = e.target.closest("[data-start-direct]");
-    if (startBtn) {
-      chatFetch("/api/chat/direct/start", {method: "POST", body: JSON.stringify({user_id: Number(startBtn.dataset.startDirect)})})
-        .then(r => r.json())
-        .then(body => openDirectChat(body.dialog_id, `${body.partner.first_name} ${body.partner.last_name}`))
-        .catch(() => {});
-      return;
-    }
-    const openBtn = e.target.closest("[data-open-direct]");
-    if (openBtn) openDirectChat(openBtn.dataset.openDirect, openBtn.dataset.partner);
-  });
-  document.getElementById("people-send-form").addEventListener("submit", e => {
-    e.preventDefault();
-    const input = document.getElementById("people-chat-text");
-    const text = input.value;
-    if (!text.trim() || !peopleActiveDialogId) return;
-    input.value = "";
-    chatFetch("/api/chat/direct/send", {method: "POST", body: JSON.stringify({dialog_id: peopleActiveDialogId, text})})
-      .then(pollPeopleChat).catch(() => {});
-  });
-}
-
-function enterPeoplePage() {
-  stopPeoplePolling();
-  peopleActiveDialogId = null;
-  document.getElementById("people-chat").hidden = true;
-  if (!chatToken) {
-    document.getElementById("people-guard").hidden = false;
-    document.getElementById("people-list").hidden = true;
-    return;
-  }
-  document.getElementById("people-guard").hidden = true;
-  document.getElementById("people-list").hidden = false;
-  document.getElementById("people-search-input").value = "";
-  loadPeopleResults("");
-  loadPeopleDialogs();
-}
-
-// ---------- Учёба: дисциплины, расписание, оценки (первый модуль учебной части) ----------
-const WEEKDAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-const SCHEDULE_KINDS = ["лекция", "практика", "лаб", "семинар"];
-
-function fmtSchedule(items) {
-  if (!items.length) return `<div class="empty">Пока ничего нет.</div>`;
-  return items.map(i => `<div class="people-row"><span>${WEEKDAY_NAMES[i.day_of_week]}, ${esc(i.start_time)}–${esc(i.end_time)}
-    ${i.course_code ? ` · ${esc(i.course_code)} ${esc(i.course_title)}` : ""}${i.room ? ` · ауд. ${esc(i.room)}` : ""} · ${esc(i.kind)}</span></div>`).join("");
-}
-
-function fmtGrades(grades) {
-  if (!grades.length) return `<div class="empty">Оценок пока нет.</div>`;
-  const byCourse = new Map();
-  for (const g of grades) {
-    const key = g.course_code || g.course_id;
-    if (!byCourse.has(key)) byCourse.set(key, {title: g.course_title, items: []});
-    byCourse.get(key).items.push(g);
-  }
-  return [...byCourse.entries()].map(([code, {title, items}]) => `
-    <div class="course-card"><h4>${esc(code)} — ${esc(title || "")}</h4>
-    ${items.map(g => `<span class="grade-pill">${esc(g.label)}: ${g.score}/${g.max_score}${g.comment ? " · " + esc(g.comment) : ""}</span>`).join("")}
-    </div>`).join("");
-}
-
-function fmtAttendance(stats) {
-  if (!stats.total) return "";
-  const retake = stats.on_retake ? ` <span class="grade-pill" style="border-color:#ff5c7a;color:#ff5c7a">РЕТЕЙК</span>` : "";
-  return `<p class="meta">Пропущено ${stats.absent} из ${stats.total} (${Math.round(stats.ratio * 100)}%)${retake}</p>`;
-}
-
-function fmtSubmissionStatus(sub) {
-  if (!sub) return `<p class="meta">Пока не сдано.</p>`;
-  if (sub.status === "graded") return `<p class="meta">Оценено: ${sub.grade_score}${sub.grade_comment ? " · " + esc(sub.grade_comment) : ""}</p>`;
-  return `<p class="meta">Сдано, ожидает проверки.</p>`;
-}
-
-async function loadMyAssignments(courseId) {
-  const box = document.getElementById(`my-assignments-${courseId}`);
-  if (!box) return;
-  try {
-    const r = await chatFetch(`/api/academics/courses/${courseId}/assignments`);
-    const assignments = (await r.json()).assignments;
-    if (!assignments.length) { box.innerHTML = `<div class="empty">Заданий пока нет.</div>`; return; }
-    const parts = await Promise.all(assignments.map(async a => {
-      const subR = await chatFetch(`/api/academics/my-submission?assignment_id=${a.id}`);
-      const sub = (await subR.json()).submission;
-      return `<div class="course-card" style="margin-top:8px">
-        <h4 style="font-size:15px">${esc(a.title)}</h4>
-        ${a.description ? `<p class="meta">${esc(a.description)}</p>` : ""}
-        ${a.due_at ? `<p class="meta">Срок: ${esc(a.due_at)}</p>` : ""}
-        ${a.file_name ? `<button type="button" class="btn ghost sm" data-download-assignment="${a.id}" data-filename="${esc(a.file_name)}">📎 ${esc(a.file_name)}</button>` : ""}
-        ${fmtSubmissionStatus(sub)}
-        <form class="mini-form" data-submit-assignment="${a.id}" style="align-items:flex-start">
-          <textarea name="text" placeholder="Текст решения" maxlength="5000"
-            style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px">${sub ? esc(sub.text) : ""}</textarea>
-          <input type="file" name="file">
-          <button class="btn sm" type="submit">${sub ? "Пересдать" : "Сдать"}</button>
-        </form>
-      </div>`;
-    }));
-    box.innerHTML = parts.join("");
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function embedVideo(url) {
-  if (!url) return "";
-  const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([\w-]{6,})/);
-  if (yt) return `<iframe src="https://www.youtube.com/embed/${yt[1]}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:12px;margin-top:8px" allowfullscreen loading="lazy"></iframe>`;
-  return `<a class="btn ghost sm" href="${esc(url)}" target="_blank" rel="noopener">🎬 Открыть видео</a>`;
-}
-
-function renderQuizTaker(lessonId, questions, attempt) {
-  if (!questions.length) return `<p class="meta" style="margin-top:8px">Теста к этому уроку нет.</p>`;
-  const summary = attempt
-    ? `<p class="meta" style="margin-top:8px">Результат теста: ${attempt.correct_count}/${attempt.total_count} (${Math.round(attempt.score)}%)</p>
-       <button type="button" class="btn ghost sm" data-toggle-quiz="${lessonId}">Пройти заново</button>` : "";
-  return `${summary}
-    <form class="mini-form" data-take-quiz="${lessonId}" id="quiz-form-${lessonId}" style="align-items:flex-start;margin-top:8px" ${attempt ? "hidden" : ""}>
-      ${questions.map((q, i) => `<div style="width:100%">
-        <p class="meta">${esc(q.text)}</p>
-        ${q.options.map((o, oi) => `<label style="display:block;margin:2px 0;font-size:14px"><input type="radio" name="q${i}" value="${oi}" required> ${esc(o)}</label>`).join("")}
-      </div>`).join("")}
-      <button class="btn sm" type="submit">${attempt ? "Отправить заново" : "Отправить тест"}</button>
-    </form>`;
-}
-
-async function loadMyLessons(courseId) {
-  const box = document.getElementById(`my-lessons-${courseId}`);
-  if (!box) return;
-  try {
-    const r = await chatFetch(`/api/academics/courses/${courseId}/lessons`);
-    const lessons = (await r.json()).lessons;
-    if (!lessons.length) { box.innerHTML = `<div class="empty">Видеоуроков пока нет.</div>`; return; }
-    const parts = await Promise.all(lessons.map(async l => {
-      const [quizR, attemptR] = await Promise.all([
-        chatFetch(`/api/academics/lessons/${l.id}/quiz`),
-        chatFetch(`/api/academics/quiz/my-attempt?lesson_id=${l.id}`),
-      ]);
-      const questions = (await quizR.json()).questions;
-      const attempt = (await attemptR.json()).attempt;
-      return `<div class="course-card" style="margin-top:8px">
-        <h4 style="font-size:15px">${esc(l.title)}</h4>
-        ${l.description ? `<p class="meta">${esc(l.description)}</p>` : ""}
-        ${embedVideo(l.video_url)}
-        ${l.file_name ? `<button type="button" class="btn ghost sm" data-download-lesson="${l.id}" data-filename="${esc(l.file_name)}" style="margin-top:8px">📎 ${esc(l.file_name)}</button>` : ""}
-        ${renderQuizTaker(l.id, questions, attempt)}
-      </div>`;
-    }));
-    box.innerHTML = parts.join("");
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-// ---------- Проктор-экзамены: подсчёт выходов за пределы окна + необязательная запись экрана ----------
-const examSessions = {};
-
-function renderExamCard(ex, attempt) {
-  const summary = attempt
-    ? `<p class="meta">Результат: ${attempt.correct_count}/${attempt.total_count} (${Math.round(attempt.score)}%) · выходов за экран: ${attempt.tab_exit_count}${attempt.has_recording ? " · запись сохранена" : ""}</p>`
-    : "";
-  return `<div class="course-card" style="margin-top:8px" data-exam-id="${ex.id}"
-      data-require-recording="${ex.require_recording ? 1 : 0}" data-time-limit="${ex.time_limit_minutes || ""}">
-    <h4 style="font-size:15px">${esc(ex.title)}</h4>
-    ${ex.description ? `<p class="meta">${esc(ex.description)}</p>` : ""}
-    ${ex.time_limit_minutes ? `<p class="meta">Лимит времени: ${ex.time_limit_minutes} мин</p>` : ""}
-    ${ex.require_recording ? `<p class="meta">⚠️ Для сдачи нужно разрешить запись экрана браузеру.</p>` : ""}
-    ${summary}
-    <div class="exam-runner" id="exam-runner-${ex.id}"></div>
-    <button type="button" class="btn sm" data-start-exam="${ex.id}">${attempt ? "Пересдать" : "Начать экзамен"}</button>
-  </div>`;
-}
-
-async function loadMyExams(courseId) {
-  const box = document.getElementById(`my-exams-${courseId}`);
-  if (!box) return;
-  try {
-    const r = await chatFetch(`/api/academics/courses/${courseId}/exams`);
-    const exams = (await r.json()).exams;
-    if (!exams.length) { box.innerHTML = `<div class="empty">Экзаменов пока нет.</div>`; return; }
-    const parts = await Promise.all(exams.map(async ex => {
-      const attemptR = await chatFetch(`/api/academics/exams/my-attempt?exam_id=${ex.id}`);
-      return renderExamCard(ex, (await attemptR.json()).attempt);
-    }));
-    box.innerHTML = parts.join("");
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-// Запись идёт через собственный диалог разрешения браузера (getDisplayMedia) — без явного
-// согласия студента запись просто не начнётся, так что экзамен с require_recording нельзя
-// начать тайком. Подсчёт выходов — через потерю фокуса окна/вкладки, пока экзамен активен.
-async function startExam(examId, card) {
-  const requireRecording = card.dataset.requireRecording === "1";
-  const timeLimit = Number(card.dataset.timeLimit) || 0;
-
-  let stream = null, recorder = null;
-  const chunks = [];
-  if (requireRecording) {
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({video: true});
-    } catch {
-      alert("Для этого экзамена нужно разрешить запись экрана — без неё начать нельзя.");
-      return;
-    }
-    try {
-      recorder = new MediaRecorder(stream, {mimeType: "video/webm"});
-      recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-      recorder.start();
-    } catch {
-      alert("Этот браузер не поддерживает запись экрана.");
-      stream.getTracks().forEach(t => t.stop());
-      return;
-    }
-  }
-
-  const session = {stream, recorder, chunks, tabExitCount: 0};
-  session.blurHandler = () => { session.tabExitCount++; };
-  session.visHandler = () => { if (document.hidden) session.tabExitCount++; };
-  window.addEventListener("blur", session.blurHandler);
-  document.addEventListener("visibilitychange", session.visHandler);
-  examSessions[examId] = session;
-
-  let questions;
-  try {
-    const r = await chatFetch(`/api/academics/exams/${examId}/questions`);
-    questions = (await r.json()).questions;
-  } catch {
-    alert("Не получилось загрузить вопросы.");
-    return;
-  }
-
-  const runner = document.getElementById(`exam-runner-${examId}`);
-  const timerHtml = timeLimit ? `<p class="meta" id="exam-timer-${examId}">Осталось: ${timeLimit}:00</p>` : "";
-  runner.innerHTML = `${timerHtml}
-    <form class="mini-form" data-submit-exam="${examId}" style="align-items:flex-start">
-      ${questions.map((q, i) => `<div style="width:100%">
-        <p class="meta">${esc(q.text)}</p>
-        ${q.options.map((o, oi) => `<label style="display:block;margin:2px 0;font-size:14px"><input type="radio" name="q${i}" value="${oi}" required> ${esc(o)}</label>`).join("")}
-      </div>`).join("")}
-      <button class="btn sm" type="submit">Сдать экзамен</button>
-    </form>`;
-  card.querySelector("[data-start-exam]").hidden = true;
-
-  if (timeLimit) {
-    session.deadline = Date.now() + timeLimit * 60000;
-    session.timerInterval = setInterval(() => {
-      const msLeft = session.deadline - Date.now();
-      const timerEl = document.getElementById(`exam-timer-${examId}`);
-      if (msLeft <= 0) {
-        clearInterval(session.timerInterval);
-        if (timerEl) timerEl.textContent = "Время вышло — сдаём автоматически…";
-        const form = runner.querySelector(`[data-submit-exam="${examId}"]`);
-        form?.requestSubmit();
-        return;
-      }
-      if (timerEl) {
-        const mins = Math.floor(msLeft / 60000), secs = Math.floor((msLeft % 60000) / 1000);
-        timerEl.textContent = `Осталось: ${mins}:${String(secs).padStart(2, "0")}`;
-      }
-    }, 1000);
-  }
-}
-
-async function finishExamSession(examId) {
-  const session = examSessions[examId];
-  if (!session) return {tab_exit_count: 0, recording: null};
-  window.removeEventListener("blur", session.blurHandler);
-  document.removeEventListener("visibilitychange", session.visHandler);
-  if (session.timerInterval) clearInterval(session.timerInterval);
-
-  let recording = null;
-  if (session.recorder && session.recorder.state !== "inactive") {
-    await new Promise(resolve => { session.recorder.onstop = resolve; session.recorder.stop(); });
-  }
-  if (session.stream) session.stream.getTracks().forEach(t => t.stop());
-  if (session.chunks.length) {
-    const blob = new Blob(session.chunks, {type: "video/webm"});
-    recording = {filename: "recording.webm", content_type: "video/webm", data: await readFileAsBase64(blob)};
-  }
-  const tabExitCount = session.tabExitCount;
-  delete examSessions[examId];
-  return {tab_exit_count: tabExitCount, recording};
-}
-
-async function loadAcademicsOverview() {
-  try {
-    const [scheduleR, gradesR, myR, allR] = await Promise.all([
-      chatFetch("/api/academics/schedule"), chatFetch("/api/academics/grades"),
-      chatFetch("/api/academics/my-courses"), chatFetch("/api/academics/courses"),
-    ]);
-    const schedule = (await scheduleR.json()).schedule;
-    const grades = (await gradesR.json()).grades;
-    const myCourses = (await myR.json()).courses;
-    const allCourses = (await allR.json()).courses;
-    const myIds = new Set(myCourses.map(c => c.id));
-
-    document.getElementById("academics-schedule").innerHTML = fmtSchedule(schedule);
-    document.getElementById("academics-grades").innerHTML = fmtGrades(grades);
-
-    const myCoursesBox = document.getElementById("academics-my-courses");
-    if (myCourses.length) {
-      myCoursesBox.innerHTML = myCourses.map(c => `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
-          ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
-          <div class="actions"><button type="button" class="btn ghost sm" data-unenroll="${c.id}">Отписаться</button></div>
-          <p class="meta" style="margin-top:14px;margin-bottom:4px">Задания</p>
-          <div class="my-assignments-box" id="my-assignments-${c.id}"><div class="empty">Загрузка…</div></div>
-          <p class="meta" style="margin-top:14px;margin-bottom:4px">Видеоуроки</p>
-          <div class="my-lessons-box" id="my-lessons-${c.id}"><div class="empty">Загрузка…</div></div>
-          <p class="meta" style="margin-top:14px;margin-bottom:4px">Экзамены</p>
-          <div class="my-exams-box" id="my-exams-${c.id}"><div class="empty">Загрузка…</div></div>
-        </div>`).join("");
-      myCourses.forEach(c => { loadMyAssignments(c.id); loadMyLessons(c.id); loadMyExams(c.id); });
-    } else {
-      myCoursesBox.innerHTML = `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
-    }
-
-    document.getElementById("academics-all-courses").innerHTML = allCourses.length
-      ? allCourses.map(c => `<div class="course-card" data-course-id="${c.id}"><h4>${esc(c.code)} — ${esc(c.title)}</h4>
-          ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
-          <div class="actions">${myIds.has(c.id) ? `<span class="grade-pill">Уже записан(а)</span>`
-            : `<button type="button" class="btn sm" data-enroll="${c.id}">Записаться</button>`}</div></div>`).join("")
-      : `<div class="empty">Дисциплин пока нет.</div>`;
-
-    if (myCourses.length) {
-      const cards = await Promise.all(myCourses.map(async c => {
-        const r = await chatFetch(`/api/academics/attendance?course_id=${c.id}`);
-        const {stats} = await r.json();
-        if (!stats.total) return "";
-        return `<div class="course-card"><h4>${esc(c.code)} — ${esc(c.title)}</h4>${fmtAttendance(stats)}</div>`;
-      }));
-      const html = cards.join("");
-      document.getElementById("academics-attendance").innerHTML = html || `<div class="empty">Посещаемость пока не отмечена.</div>`;
-    } else {
-      document.getElementById("academics-attendance").innerHTML = `<div class="empty">Пока не записан(а) ни на одну дисциплину.</div>`;
-    }
-  } catch {}
-}
-
-// Если у дисциплины несколько вариантов расписания — сначала выбор, иначе сразу запись.
-async function startEnroll(courseId, card) {
-  try {
-    const r = await chatFetch(`/api/academics/courses/${courseId}/options`);
-    const options = (await r.json()).schedule;
-    if (options.length <= 1) {
-      await chatFetch("/api/academics/enroll", {method: "POST", body: JSON.stringify({course_id: courseId})});
-      loadAcademicsOverview();
-      return;
-    }
-    card.querySelector(".actions").innerHTML = `<form class="mini-form" data-enroll-choice="${courseId}">
-      <select name="schedule_item_id">${options.map(o => `<option value="${o.id}">${WEEKDAY_NAMES[o.day_of_week]}, ${esc(o.start_time)}–${esc(o.end_time)}${o.room ? " · ауд. " + esc(o.room) : ""}</option>`).join("")}</select>
-      <button class="btn sm" type="submit">Записаться</button>
-    </form>`;
-  } catch {}
-}
-
-function renderTeachingCourse(c, roster, schedule, assignments, lessons, exams) {
-  const rosterHtml = roster.length
-    ? roster.map(s => `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}</span>
-        <form class="mini-form" data-set-grade="${c.id}" data-student="${s.id}">
-          <input name="label" placeholder="РК1" maxlength="40" required style="width:90px">
-          <input name="score" type="number" step="0.1" placeholder="Балл" required>
-          <input name="max_score" type="number" step="0.1" placeholder="Из" value="100">
-          <button class="btn sm" type="submit">Поставить</button>
-        </form></div>`).join("")
-    : `<div class="empty">Пока никто не записан.</div>`;
-
-  const scheduleHtml = schedule.length
-    ? schedule.map(i => `<div class="people-row"><span>${WEEKDAY_NAMES[i.day_of_week]}, ${esc(i.start_time)}–${esc(i.end_time)}
-        ${i.room ? ` · ауд. ${esc(i.room)}` : ""} · ${esc(i.kind)}</span>
-        <span class="actions" style="margin:0">
-          <button type="button" class="btn ghost sm" data-show-attendance="${i.id}">Посещаемость</button>
-          <button type="button" class="btn ghost sm" data-delete-schedule="${i.id}">Удалить</button>
-        </span></div>
-        <div class="attendance-box" id="attendance-box-${i.id}" hidden></div>`).join("")
-    : `<div class="empty">Расписания пока нет.</div>`;
-
-  const assignmentsHtml = assignments.length
-    ? assignments.map(a => `<div class="people-row"><span>${esc(a.title)}${a.due_at ? ` · до ${esc(a.due_at)}` : ""}${a.file_name ? ` · 📎 ${esc(a.file_name)}` : ""}</span>
-        <span class="actions" style="margin:0">
-          <button type="button" class="btn ghost sm" data-show-submissions="${a.id}">Сдачи</button>
-          <button type="button" class="btn ghost sm" data-delete-assignment="${a.id}">Удалить</button>
-        </span></div>
-        <div class="submissions-box" id="submissions-box-${a.id}" hidden></div>`).join("")
-    : `<div class="empty">Заданий пока нет.</div>`;
-
-  const lessonsHtml = lessons.length
-    ? lessons.map(l => `<div class="people-row"><span>${esc(l.title)}${l.video_url ? " · 🎬 видео" : ""}${l.file_name ? ` · 📎 ${esc(l.file_name)}` : ""}</span>
-        <span class="actions" style="margin:0">
-          <button type="button" class="btn ghost sm" data-show-quiz-editor="${l.id}">Вопросы теста</button>
-          <button type="button" class="btn ghost sm" data-show-attempts="${l.id}">Результаты</button>
-          <button type="button" class="btn ghost sm" data-delete-lesson="${l.id}">Удалить</button>
-        </span></div>
-        <div class="quiz-editor-box" id="quiz-editor-${l.id}" hidden></div>
-        <div class="attempts-box" id="attempts-box-${l.id}" hidden></div>`).join("")
-    : `<div class="empty">Видеоуроков пока нет.</div>`;
-
-  const examsHtml = exams.length
-    ? exams.map(ex => `<div class="people-row"><span>${esc(ex.title)}${ex.time_limit_minutes ? ` · ${ex.time_limit_minutes} мин` : ""}${ex.require_recording ? " · 🎥 запись обязательна" : ""}</span>
-        <span class="actions" style="margin:0">
-          <button type="button" class="btn ghost sm" data-show-exam-editor="${ex.id}">Вопросы</button>
-          <button type="button" class="btn ghost sm" data-show-exam-attempts="${ex.id}">Результаты</button>
-          <button type="button" class="btn ghost sm" data-delete-exam="${ex.id}">Удалить</button>
-        </span></div>
-        <div class="exam-editor-box" id="exam-editor-${ex.id}" hidden></div>
-        <div class="exam-attempts-box" id="exam-attempts-${ex.id}" hidden></div>`).join("")
-    : `<div class="empty">Экзаменов пока нет.</div>`;
-
-  return `<div class="course-card" data-course-id="${c.id}">
-    <h4>${esc(c.code)} — ${esc(c.title)}</h4>
-    ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
-    <p class="meta" style="margin-top:14px;margin-bottom:4px">Расписание</p>
-    ${scheduleHtml}
-    <form class="mini-form" data-add-schedule="${c.id}">
-      <select name="day_of_week">${WEEKDAY_NAMES.map((d, i) => `<option value="${i}">${d}</option>`).join("")}</select>
-      <input name="start_time" type="time" required>
-      <input name="end_time" type="time" required>
-      <input name="room" placeholder="Ауд." maxlength="40" style="width:80px">
-      <select name="kind">${SCHEDULE_KINDS.map(k => `<option>${k}</option>`).join("")}</select>
-      <button class="btn sm" type="submit">+ Пара</button>
-    </form>
-    <p class="meta" style="margin-top:14px;margin-bottom:4px">Студенты (${roster.length})</p>
-    ${rosterHtml}
-    <p class="meta" style="margin-top:14px;margin-bottom:4px">Задания</p>
-    ${assignmentsHtml}
-    <form class="mini-form" data-create-assignment="${c.id}" style="align-items:flex-start">
-      <input name="title" placeholder="Название задания" maxlength="200" required>
-      <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"
-        style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px"></textarea>
-      <input name="due_at" type="date">
-      <input type="file" name="file">
-      <button class="btn sm" type="submit">+ Задание</button>
-    </form>
-    <p class="meta" style="margin-top:14px;margin-bottom:4px">Видеоуроки</p>
-    ${lessonsHtml}
-    <form class="mini-form" data-create-lesson="${c.id}" style="align-items:flex-start">
-      <input name="title" placeholder="Название урока" maxlength="200" required>
-      <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"
-        style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px"></textarea>
-      <input name="video_url" placeholder="Ссылка на видео (YouTube и т.п.)" style="width:100%">
-      <input type="file" name="file">
-      <button class="btn sm" type="submit">+ Урок</button>
-    </form>
-    <p class="meta" style="margin-top:14px;margin-bottom:4px">Экзамены (с подсчётом выходов и записью экрана)</p>
-    ${examsHtml}
-    <form class="mini-form" data-create-exam="${c.id}" style="align-items:flex-start">
-      <input name="title" placeholder="Название экзамена" maxlength="200" required>
-      <textarea name="description" placeholder="Описание (необязательно)" maxlength="2000"
-        style="width:100%;background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--text);font:14px Manrope;resize:vertical;min-height:38px"></textarea>
-      <input name="time_limit_minutes" type="number" min="1" placeholder="Лимит, мин" style="width:120px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" name="require_recording"> Обязательна запись экрана</label>
-      <button class="btn sm" type="submit">+ Экзамен</button>
-    </form>
-  </div>`;
-}
-
-function renderQuizEditor(questions) {
-  const list = questions.length ? questions.map(q => `<div class="roster-row"><span>${esc(q.text)}
-      <small>${q.options.map((o, i) => i === q.correct_index ? `✅ ${esc(o)}` : esc(o)).join(" · ")}</small>
-    </span><button type="button" class="btn ghost sm" data-delete-question="${q.id}">Удалить</button></div>`).join("")
-    : `<div class="empty">Вопросов пока нет.</div>`;
-  return `${list}
-    <form class="mini-form" data-add-question style="align-items:flex-start">
-      <input name="text" placeholder="Текст вопроса" maxlength="500" required style="width:100%">
-      <input name="options" placeholder="Варианты через ; (напр. 3;4;5)" required style="width:100%">
-      <input name="correct_index" type="number" min="0" placeholder="№ правильного (с 0)" required style="width:160px">
-      <button class="btn sm" type="submit">+ Вопрос</button>
-    </form>`;
-}
-
-async function loadQuizEditor(lessonId, box) {
-  box.hidden = false;
-  box.innerHTML = `<div class="empty">Загрузка…</div>`;
-  try {
-    const r = await chatFetch(`/api/academics/lessons/${lessonId}/quiz`);
-    box.innerHTML = renderQuizEditor((await r.json()).questions);
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function toggleQuizEditor(lessonId, box) {
-  if (!box.hidden) { box.hidden = true; return; }
-  loadQuizEditor(lessonId, box);
-}
-
-function renderAttempts(attempts) {
-  if (!attempts.length) return `<div class="empty">Пока никто не проходил тест.</div>`;
-  return attempts.map(a => `<div class="people-row"><span>${esc(a.first_name)} ${esc(a.last_name)} — ${a.correct_count}/${a.total_count} (${Math.round(a.score)}%)</span></div>`).join("");
-}
-
-async function loadAttemptsBox(lessonId, box) {
-  box.hidden = false;
-  box.innerHTML = `<div class="empty">Загрузка…</div>`;
-  try {
-    const r = await chatFetch(`/api/academics/lessons/${lessonId}/attempts`);
-    box.innerHTML = renderAttempts((await r.json()).attempts);
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function toggleAttemptsBox(lessonId, box) {
-  if (!box.hidden) { box.hidden = true; return; }
-  loadAttemptsBox(lessonId, box);
-}
-
-function renderExamEditor(questions) {
-  const list = questions.length ? questions.map(q => `<div class="roster-row"><span>${esc(q.text)}
-      <small>${q.options.map((o, i) => i === q.correct_index ? `✅ ${esc(o)}` : esc(o)).join(" · ")}</small>
-    </span><button type="button" class="btn ghost sm" data-delete-exam-question="${q.id}">Удалить</button></div>`).join("")
-    : `<div class="empty">Вопросов пока нет.</div>`;
-  return `${list}
-    <form class="mini-form" data-add-exam-question style="align-items:flex-start">
-      <input name="text" placeholder="Текст вопроса" maxlength="500" required style="width:100%">
-      <input name="options" placeholder="Варианты через ; (напр. 3;4;5)" required style="width:100%">
-      <input name="correct_index" type="number" min="0" placeholder="№ правильного (с 0)" required style="width:160px">
-      <button class="btn sm" type="submit">+ Вопрос</button>
-    </form>`;
-}
-
-async function loadExamEditor(examId, box) {
-  box.hidden = false;
-  box.innerHTML = `<div class="empty">Загрузка…</div>`;
-  try {
-    const r = await chatFetch(`/api/academics/exams/${examId}/questions`);
-    box.innerHTML = renderExamEditor((await r.json()).questions);
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function toggleExamEditor(examId, box) {
-  if (!box.hidden) { box.hidden = true; return; }
-  loadExamEditor(examId, box);
-}
-
-function renderExamAttempts(attempts) {
-  if (!attempts.length) return `<div class="empty">Пока никто не сдавал.</div>`;
-  return attempts.map(a => `<div class="people-row"><span>${esc(a.first_name)} ${esc(a.last_name)} — ${a.correct_count}/${a.total_count} (${Math.round(a.score)}%) · выходов за экран: ${a.tab_exit_count}</span>
-    ${a.has_recording ? `<button type="button" class="btn ghost sm" data-download-recording="${a.id}" data-filename="exam-${a.id}.webm">🎥 Запись</button>` : ""}</div>`).join("");
-}
-
-async function loadExamAttemptsBox(examId, box) {
-  box.hidden = false;
-  box.innerHTML = `<div class="empty">Загрузка…</div>`;
-  try {
-    const r = await chatFetch(`/api/academics/exams/${examId}/attempts`);
-    box.innerHTML = renderExamAttempts((await r.json()).attempts);
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function toggleExamAttemptsBox(examId, box) {
-  if (!box.hidden) { box.hidden = true; return; }
-  loadExamAttemptsBox(examId, box);
-}
-
-function renderSubmissions(submissions) {
-  if (!submissions.length) return `<div class="empty">Пока никто не сдал.</div>`;
-  return submissions.map(s => `
-    <div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}
-      ${s.status === "graded" ? `<small>Оценено: ${s.grade_score}${s.grade_comment ? " · " + esc(s.grade_comment) : ""}</small>` : `<small>Ожидает проверки</small>`}
-    </span></div>
-    ${s.text ? `<p class="meta" style="white-space:pre-wrap">${esc(s.text)}</p>` : ""}
-    ${s.file_name ? `<button type="button" class="btn ghost sm" data-download-submission="${s.id}" data-filename="${esc(s.file_name)}">📎 ${esc(s.file_name)}</button>` : ""}
-    <form class="mini-form" data-grade-submission="${s.id}">
-      <input name="score" type="number" step="0.1" placeholder="Балл" required style="width:90px">
-      <input name="comment" placeholder="Комментарий" maxlength="500">
-      <button class="btn sm" type="submit">Оценить</button>
-    </form>`).join("");
-}
-
-async function loadSubmissionsBox(assignmentId, box) {
-  box.hidden = false;
-  box.innerHTML = `<div class="empty">Загрузка…</div>`;
-  try {
-    const r = await chatFetch(`/api/academics/assignments/${assignmentId}/submissions`);
-    box.innerHTML = renderSubmissions((await r.json()).submissions);
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function toggleSubmissionsBox(assignmentId, box) {
-  if (!box.hidden) { box.hidden = true; return; }
-  loadSubmissionsBox(assignmentId, box);
-}
-
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function fileFieldToPayload(fileInput) {
-  const file = fileInput && fileInput.files && fileInput.files[0];
-  if (!file) return null;
-  return {filename: file.name, content_type: file.type || "application/octet-stream", data: await readFileAsBase64(file)};
-}
-
-async function downloadViaChatFetch(url, filename) {
-  try {
-    const r = await chatFetch(url);
-    if (!r.ok) throw new Error("download");
-    const blob = await r.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch {
-    alert("Не получилось скачать файл.");
-  }
-}
-
-function renderAttendanceBox(students) {
-  if (!students.length) return `<div class="empty">Никто не выбрал этот вариант расписания.</div>`;
-  return students.map(s => {
-    const st = s.stats;
-    const badge = st.total
-      ? `<small>${st.absent}/${st.total} пропусков (${Math.round(st.ratio * 100)}%)${st.on_retake ? " · РЕТЕЙК" : ""}</small>` : "";
-    return `<div class="roster-row"><span>${esc(s.first_name)} ${esc(s.last_name)}${badge}</span></div>
-      <form class="mini-form" data-mark-attendance="${s.id}">
-        <input type="date" name="class_date" required style="width:150px">
-        <select name="present"><option value="1">Был(а)</option><option value="0">Не был(а)</option></select>
-        <button class="btn sm" type="submit">Отметить</button>
-      </form>
-      <form class="mini-form" data-delete-attendance="${s.id}">
-        <input type="date" name="class_date" required style="width:150px">
-        <button class="btn ghost sm" type="submit">Удалить отметку за эту дату</button>
-      </form>`;
-  }).join("");
-}
-
-async function loadAttendanceBox(itemId, box) {
-  box.hidden = false;
-  box.innerHTML = `<div class="empty">Загрузка…</div>`;
-  try {
-    const r = await chatFetch(`/api/academics/schedule-items/${itemId}/attendance`);
-    box.innerHTML = renderAttendanceBox((await r.json()).students);
-  } catch {
-    box.innerHTML = `<div class="empty">Не получилось загрузить.</div>`;
-  }
-}
-
-function toggleAttendanceBox(itemId, box) {
-  if (!box.hidden) { box.hidden = true; return; }
-  loadAttendanceBox(itemId, box);
-}
-
-async function loadTeaching() {
-  const section = document.getElementById("academics-teaching");
-  try {
-    const r = await chatFetch("/api/academics/teaching");
-    if (r.status === 403) { section.hidden = true; return; }
-    section.hidden = false;
-    const courses = (await r.json()).courses;
-    const box = document.getElementById("academics-teaching-courses");
-    if (!courses.length) { box.innerHTML = `<div class="empty">Пока нет дисциплин — создай первую выше.</div>`; return; }
-    const parts = await Promise.all(courses.map(async c => {
-      const [rosterR, scheduleR, assignmentsR, lessonsR, examsR] = await Promise.all([
-        chatFetch(`/api/academics/courses/${c.id}/roster`),
-        chatFetch(`/api/academics/courses/${c.id}/schedule`),
-        chatFetch(`/api/academics/courses/${c.id}/assignments`),
-        chatFetch(`/api/academics/courses/${c.id}/lessons`),
-        chatFetch(`/api/academics/courses/${c.id}/exams`),
-      ]);
-      return renderTeachingCourse(c, (await rosterR.json()).students, (await scheduleR.json()).schedule,
-        (await assignmentsR.json()).assignments, (await lessonsR.json()).lessons, (await examsR.json()).exams);
-    }));
-    box.innerHTML = parts.join("");
-  } catch {}
-}
-
-function initAcademics() {
-  document.getElementById("academics-create-course-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    const form = e.target;
-    const status = document.getElementById("academics-create-status");
-    status.textContent = "Создаём…";
-    try {
-      const r = await chatFetch("/api/academics/courses", {method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))});
-      if (!r.ok) { status.textContent = "Не получилось создать дисциплину."; return; }
-      status.textContent = "";
-      form.reset();
-      loadTeaching();
-      loadAcademicsOverview();
-    } catch { status.textContent = "Бэкенд недоступен."; }
-  });
-
-  document.addEventListener("click", e => {
-    const enrollBtn = e.target.closest("[data-enroll]");
-    if (enrollBtn) {
-      startEnroll(Number(enrollBtn.dataset.enroll), enrollBtn.closest(".course-card"));
-      return;
-    }
-    const unenrollBtn = e.target.closest("[data-unenroll]");
-    if (unenrollBtn) {
-      chatFetch("/api/academics/unenroll", {method: "POST", body: JSON.stringify({course_id: Number(unenrollBtn.dataset.unenroll)})})
-        .then(loadAcademicsOverview).catch(() => {});
-      return;
-    }
-    const delBtn = e.target.closest("[data-delete-schedule]");
-    if (delBtn) {
-      chatFetch("/api/academics/schedule/delete", {method: "POST", body: JSON.stringify({item_id: Number(delBtn.dataset.deleteSchedule)})})
-        .then(loadTeaching).catch(() => {});
-      return;
-    }
-    const attBtn = e.target.closest("[data-show-attendance]");
-    if (attBtn) {
-      const itemId = Number(attBtn.dataset.showAttendance);
-      toggleAttendanceBox(itemId, document.getElementById(`attendance-box-${itemId}`));
-      return;
-    }
-    const subBtn = e.target.closest("[data-show-submissions]");
-    if (subBtn) {
-      const assignmentId = Number(subBtn.dataset.showSubmissions);
-      toggleSubmissionsBox(assignmentId, document.getElementById(`submissions-box-${assignmentId}`));
-      return;
-    }
-    const delAssignBtn = e.target.closest("[data-delete-assignment]");
-    if (delAssignBtn) {
-      chatFetch("/api/academics/assignments/delete",
-        {method: "POST", body: JSON.stringify({assignment_id: Number(delAssignBtn.dataset.deleteAssignment)})})
-        .then(loadTeaching).catch(() => {});
-      return;
-    }
-    const dlAssignBtn = e.target.closest("[data-download-assignment]");
-    if (dlAssignBtn) {
-      downloadViaChatFetch(`/api/academics/assignments/${dlAssignBtn.dataset.downloadAssignment}/file`, dlAssignBtn.dataset.filename);
-      return;
-    }
-    const dlSubBtn = e.target.closest("[data-download-submission]");
-    if (dlSubBtn) {
-      downloadViaChatFetch(`/api/academics/submissions/${dlSubBtn.dataset.downloadSubmission}/file`, dlSubBtn.dataset.filename);
-      return;
-    }
-    const quizEditBtn = e.target.closest("[data-show-quiz-editor]");
-    if (quizEditBtn) {
-      const lessonId = Number(quizEditBtn.dataset.showQuizEditor);
-      toggleQuizEditor(lessonId, document.getElementById(`quiz-editor-${lessonId}`));
-      return;
-    }
-    const attemptsBtn = e.target.closest("[data-show-attempts]");
-    if (attemptsBtn) {
-      const lessonId = Number(attemptsBtn.dataset.showAttempts);
-      toggleAttemptsBox(lessonId, document.getElementById(`attempts-box-${lessonId}`));
-      return;
-    }
-    const delLessonBtn = e.target.closest("[data-delete-lesson]");
-    if (delLessonBtn) {
-      chatFetch("/api/academics/lessons/delete", {method: "POST", body: JSON.stringify({lesson_id: Number(delLessonBtn.dataset.deleteLesson)})})
-        .then(loadTeaching).catch(() => {});
-      return;
-    }
-    const delQuestionBtn = e.target.closest("[data-delete-question]");
-    if (delQuestionBtn) {
-      const box = delQuestionBtn.closest(".quiz-editor-box");
-      const lessonId = Number(box.id.replace("quiz-editor-", ""));
-      chatFetch("/api/academics/quiz-questions/delete", {method: "POST", body: JSON.stringify({question_id: Number(delQuestionBtn.dataset.deleteQuestion)})})
-        .then(() => loadQuizEditor(lessonId, box)).catch(() => {});
-      return;
-    }
-    const dlLessonBtn = e.target.closest("[data-download-lesson]");
-    if (dlLessonBtn) {
-      downloadViaChatFetch(`/api/academics/lessons/${dlLessonBtn.dataset.downloadLesson}/file`, dlLessonBtn.dataset.filename);
-      return;
-    }
-    const toggleQuizBtn = e.target.closest("[data-toggle-quiz]");
-    if (toggleQuizBtn) {
-      const form = document.getElementById(`quiz-form-${toggleQuizBtn.dataset.toggleQuiz}`);
-      if (form) form.hidden = !form.hidden;
-      return;
-    }
-    const examEditBtn = e.target.closest("[data-show-exam-editor]");
-    if (examEditBtn) {
-      const examId = Number(examEditBtn.dataset.showExamEditor);
-      toggleExamEditor(examId, document.getElementById(`exam-editor-${examId}`));
-      return;
-    }
-    const examAttemptsBtn = e.target.closest("[data-show-exam-attempts]");
-    if (examAttemptsBtn) {
-      const examId = Number(examAttemptsBtn.dataset.showExamAttempts);
-      toggleExamAttemptsBox(examId, document.getElementById(`exam-attempts-${examId}`));
-      return;
-    }
-    const delExamBtn = e.target.closest("[data-delete-exam]");
-    if (delExamBtn) {
-      chatFetch("/api/academics/exams/delete", {method: "POST", body: JSON.stringify({exam_id: Number(delExamBtn.dataset.deleteExam)})})
-        .then(loadTeaching).catch(() => {});
-      return;
-    }
-    const delExamQBtn = e.target.closest("[data-delete-exam-question]");
-    if (delExamQBtn) {
-      const box = delExamQBtn.closest(".exam-editor-box");
-      const examId = Number(box.id.replace("exam-editor-", ""));
-      chatFetch("/api/academics/exam-questions/delete", {method: "POST", body: JSON.stringify({question_id: Number(delExamQBtn.dataset.deleteExamQuestion)})})
-        .then(() => loadExamEditor(examId, box)).catch(() => {});
-      return;
-    }
-    const dlRecordingBtn = e.target.closest("[data-download-recording]");
-    if (dlRecordingBtn) {
-      downloadViaChatFetch(`/api/academics/exam-attempts/${dlRecordingBtn.dataset.downloadRecording}/recording`, dlRecordingBtn.dataset.filename);
-      return;
-    }
-    const startExamBtn = e.target.closest("[data-start-exam]");
-    if (startExamBtn) {
-      startExam(Number(startExamBtn.dataset.startExam), startExamBtn.closest(".course-card"));
-    }
-  });
-
-  document.addEventListener("submit", async e => {
-    const createAssignForm = e.target.closest("[data-create-assignment]");
-    if (createAssignForm) {
-      e.preventDefault();
-      const fd = new FormData(createAssignForm);
-      const body = {
-        course_id: Number(createAssignForm.dataset.createAssignment),
-        title: fd.get("title"), description: fd.get("description"), due_at: fd.get("due_at") || null,
-      };
-      const file = await fileFieldToPayload(createAssignForm.querySelector('input[type="file"]'));
-      if (file) body.file = file;
-      chatFetch("/api/academics/assignments", {method: "POST", body: JSON.stringify(body)}).then(r => {
-        if (r.ok) createAssignForm.reset();
-        loadTeaching();
-      }).catch(() => {});
-      return;
-    }
-    const submitAssignForm = e.target.closest("[data-submit-assignment]");
-    if (submitAssignForm) {
-      e.preventDefault();
-      const assignmentId = Number(submitAssignForm.dataset.submitAssignment);
-      const fd = new FormData(submitAssignForm);
-      const body = {assignment_id: assignmentId, text: fd.get("text") || ""};
-      const file = await fileFieldToPayload(submitAssignForm.querySelector('input[type="file"]'));
-      if (file) body.file = file;
-      const box = submitAssignForm.closest(".my-assignments-box");
-      const courseId = Number(box.id.replace("my-assignments-", ""));
-      chatFetch("/api/academics/submissions", {method: "POST", body: JSON.stringify(body)})
-        .then(() => loadMyAssignments(courseId)).catch(() => {});
-      return;
-    }
-    const gradeSubForm = e.target.closest("[data-grade-submission]");
-    if (gradeSubForm) {
-      e.preventDefault();
-      const fd = new FormData(gradeSubForm);
-      const box = gradeSubForm.closest(".submissions-box");
-      const assignmentId = Number(box.id.replace("submissions-box-", ""));
-      const body = {submission_id: Number(gradeSubForm.dataset.gradeSubmission),
-        score: Number(fd.get("score")), comment: fd.get("comment") || ""};
-      chatFetch("/api/academics/submissions/grade", {method: "POST", body: JSON.stringify(body)})
-        .then(() => loadSubmissionsBox(assignmentId, box)).catch(() => {});
-      return;
-    }
-    const createLessonForm = e.target.closest("[data-create-lesson]");
-    if (createLessonForm) {
-      e.preventDefault();
-      const fd = new FormData(createLessonForm);
-      const body = {
-        course_id: Number(createLessonForm.dataset.createLesson),
-        title: fd.get("title"), description: fd.get("description"), video_url: fd.get("video_url"),
-      };
-      const file = await fileFieldToPayload(createLessonForm.querySelector('input[type="file"]'));
-      if (file) body.file = file;
-      chatFetch("/api/academics/lessons", {method: "POST", body: JSON.stringify(body)}).then(r => {
-        if (r.ok) createLessonForm.reset();
-        loadTeaching();
-      }).catch(() => {});
-      return;
-    }
-    const addQuestionForm = e.target.closest("[data-add-question]");
-    if (addQuestionForm) {
-      e.preventDefault();
-      const box = addQuestionForm.closest(".quiz-editor-box");
-      const lessonId = Number(box.id.replace("quiz-editor-", ""));
-      const fd = new FormData(addQuestionForm);
-      const body = {
-        lesson_id: lessonId, text: fd.get("text"),
-        options: String(fd.get("options") || "").split(";").map(s => s.trim()).filter(Boolean),
-        correct_index: Number(fd.get("correct_index")),
-      };
-      chatFetch("/api/academics/quiz-questions", {method: "POST", body: JSON.stringify(body)}).then(r => {
-        if (!r.ok) { alert("Проверьте вопрос: минимум 2 варианта, номер правильного — в пределах списка."); return; }
-        loadQuizEditor(lessonId, box);
-      }).catch(() => {});
-      return;
-    }
-    const takeQuizForm = e.target.closest("[data-take-quiz]");
-    if (takeQuizForm) {
-      e.preventDefault();
-      const lessonId = Number(takeQuizForm.dataset.takeQuiz);
-      const fd = new FormData(takeQuizForm);
-      const answers = [];
-      for (let i = 0; fd.has(`q${i}`); i++) answers.push(Number(fd.get(`q${i}`)));
-      chatFetch("/api/academics/quiz/submit", {method: "POST", body: JSON.stringify({lesson_id: lessonId, answers})})
-        .then(r => r.json())
-        .then(body => {
-          const lines = body.results.map((res, idx) =>
-            `${idx + 1}. ${res.is_correct ? "✅" : "❌"} ${res.text} — правильный ответ: ${res.options[res.correct_index]}`);
-          alert(`Результат: ${body.correct_count}/${body.total_count} (${Math.round(body.score)}%)\n\n${lines.join("\n")}`);
-          const lessonsBox = takeQuizForm.closest(".my-lessons-box");
-          loadMyLessons(Number(lessonsBox.id.replace("my-lessons-", "")));
-        }).catch(() => {});
-      return;
-    }
-    const createExamForm = e.target.closest("[data-create-exam]");
-    if (createExamForm) {
-      e.preventDefault();
-      const fd = new FormData(createExamForm);
-      const body = {
-        course_id: Number(createExamForm.dataset.createExam),
-        title: fd.get("title"), description: fd.get("description"),
-        time_limit_minutes: fd.get("time_limit_minutes") || null,
-        require_recording: fd.get("require_recording") === "on",
-      };
-      chatFetch("/api/academics/exams", {method: "POST", body: JSON.stringify(body)}).then(r => {
-        if (r.ok) createExamForm.reset();
-        loadTeaching();
-      }).catch(() => {});
-      return;
-    }
-    const addExamQForm = e.target.closest("[data-add-exam-question]");
-    if (addExamQForm) {
-      e.preventDefault();
-      const box = addExamQForm.closest(".exam-editor-box");
-      const examId = Number(box.id.replace("exam-editor-", ""));
-      const fd = new FormData(addExamQForm);
-      const body = {
-        exam_id: examId, text: fd.get("text"),
-        options: String(fd.get("options") || "").split(";").map(s => s.trim()).filter(Boolean),
-        correct_index: Number(fd.get("correct_index")),
-      };
-      chatFetch("/api/academics/exam-questions", {method: "POST", body: JSON.stringify(body)}).then(r => {
-        if (!r.ok) { alert("Проверьте вопрос: минимум 2 варианта, номер правильного — в пределах списка."); return; }
-        loadExamEditor(examId, box);
-      }).catch(() => {});
-      return;
-    }
-    const submitExamForm = e.target.closest("[data-submit-exam]");
-    if (submitExamForm) {
-      e.preventDefault();
-      const examId = Number(submitExamForm.dataset.submitExam);
-      const fd = new FormData(submitExamForm);
-      const answers = [];
-      for (let i = 0; fd.has(`q${i}`); i++) answers.push(Number(fd.get(`q${i}`)));
-      const {tab_exit_count, recording} = await finishExamSession(examId);
-      const body = {exam_id: examId, answers, tab_exit_count};
-      if (recording) body.recording = recording;
-      chatFetch("/api/academics/exams/submit", {method: "POST", body: JSON.stringify(body)}).then(async r => {
-        if (!r.ok) {
-          alert(r.status === 400 ? "Не получилось сдать: для этого экзамена обязательна запись экрана."
-            : `Не получилось сдать экзамен (код ${r.status}).`);
-          return;
-        }
-        const data = await r.json();
-        const lines = data.results.map((res, idx) =>
-          `${idx + 1}. ${res.is_correct ? "✅" : "❌"} ${res.text} — правильный ответ: ${res.options[res.correct_index]}`);
-        alert(`Результат: ${data.correct_count}/${data.total_count} (${Math.round(data.score)}%)\nВыходов за экран: ${data.tab_exit_count}\n\n${lines.join("\n")}`);
-        const examsBox = submitExamForm.closest(".my-exams-box");
-        loadMyExams(Number(examsBox.id.replace("my-exams-", "")));
-      }).catch(() => alert("Бэкенд недоступен."));
-      return;
-    }
-    const enrollChoiceForm = e.target.closest("[data-enroll-choice]");
-    if (enrollChoiceForm) {
-      e.preventDefault();
-      const courseId = Number(enrollChoiceForm.dataset.enrollChoice);
-      const scheduleItemId = Number(new FormData(enrollChoiceForm).get("schedule_item_id"));
-      chatFetch("/api/academics/enroll", {method: "POST", body: JSON.stringify({course_id: courseId, schedule_item_id: scheduleItemId})})
-        .then(loadAcademicsOverview).catch(() => {});
-      return;
-    }
-    const addForm = e.target.closest("[data-add-schedule]");
-    if (addForm) {
-      e.preventDefault();
-      const data = Object.fromEntries(new FormData(addForm).entries());
-      data.course_id = Number(addForm.dataset.addSchedule);
-      data.day_of_week = Number(data.day_of_week);
-      chatFetch("/api/academics/schedule", {method: "POST", body: JSON.stringify(data)}).then(loadTeaching).catch(() => {});
-      return;
-    }
-    const gradeForm = e.target.closest("[data-set-grade]");
-    if (gradeForm) {
-      e.preventDefault();
-      const data = Object.fromEntries(new FormData(gradeForm).entries());
-      data.course_id = Number(gradeForm.dataset.setGrade);
-      data.user_id = Number(gradeForm.dataset.student);
-      data.score = Number(data.score);
-      data.max_score = Number(data.max_score || 100);
-      chatFetch("/api/academics/grades/set", {method: "POST", body: JSON.stringify(data)})
-        .then(() => { gradeForm.reset(); loadAcademicsOverview(); }).catch(() => {});
-      return;
-    }
-    const markForm = e.target.closest("[data-mark-attendance]");
-    if (markForm) {
-      e.preventDefault();
-      const box = markForm.closest(".attendance-box");
-      const itemId = Number(box.id.replace("attendance-box-", ""));
-      const fd = new FormData(markForm);
-      const body = {schedule_item_id: itemId, user_id: Number(markForm.dataset.markAttendance),
-        class_date: fd.get("class_date"), present: fd.get("present") === "1"};
-      chatFetch("/api/academics/attendance/mark", {method: "POST", body: JSON.stringify(body)}).then(r => {
-        if (r.status === 409) alert("Студент уже на ретейке (больше 30% пропусков) — новую отметку поставить нельзя.");
-        loadAttendanceBox(itemId, box);
-      }).catch(() => {});
-      return;
-    }
-    const delAttForm = e.target.closest("[data-delete-attendance]");
-    if (delAttForm) {
-      e.preventDefault();
-      const box = delAttForm.closest(".attendance-box");
-      const itemId = Number(box.id.replace("attendance-box-", ""));
-      const fd = new FormData(delAttForm);
-      const body = {schedule_item_id: itemId, user_id: Number(delAttForm.dataset.deleteAttendance), class_date: fd.get("class_date")};
-      chatFetch("/api/academics/attendance/delete", {method: "POST", body: JSON.stringify(body)})
-        .then(() => loadAttendanceBox(itemId, box)).catch(() => {});
-    }
-  });
-}
-
-function enterAcademicsPage() {
-  if (!chatToken) {
-    document.getElementById("academics-guard").hidden = false;
-    document.getElementById("academics-main").hidden = true;
-    document.getElementById("academics-teaching").hidden = true;
-    return;
-  }
-  document.getElementById("academics-guard").hidden = true;
-  document.getElementById("academics-main").hidden = false;
-  loadAcademicsOverview();
-  loadTeaching();
-}
-
-function route() {
-  const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events", "summit", "remus", "hunters", "chat", "people", "academics"].includes(p) ? p : "home";
-  document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
-  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
-  window.scrollTo(0, 0);
-  if (id === "summit") loadSummit();
-  if (id === "remus") loadRemus();
-  if (id === "hunters") loadHunters();
-  if (id === "people") enterPeoplePage();
-  if (id === "academics") enterAcademicsPage();
-}
-initChat();
-initPeople();
-initAcademics();
-initPartners();
-addEventListener("hashchange", route);
-route();
-load();
-loadStats();
-initLeadForm();
-
-// Регистрация service worker — без него Android не предложит "Установить приложение"
-if ("serviceWorker" in navigator) {
-  addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  });
-}
-</script>
+<footer><div class="wrap">Pople — студенческий проект для AlmaU. Не является официальным ресурсом Almaty Management University. · <a href="#privacy">Как мы храним данные</a></div></footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/core.js" defer></script>
+<script src="js/public.js" defer></script>
+<script src="js/auth.js" defer></script>
+<script src="js/home.js" defer></script>
+<script src="js/chat.js" defer></script>
+<script src="js/people.js" defer></script>
+<script src="js/academics.js" defer></script>
+<script src="js/teaching.js" defer></script>
+<script src="js/exam.js" defer></script>
+<script src="js/profile.js" defer></script>
+<script src="js/admin.js" defer></script>
+<script src="js/main.js" defer></script>
 </body>
 </html>
