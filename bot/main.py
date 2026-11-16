@@ -16,6 +16,7 @@ from bot.club_jobs import club_jobs_loop
 from bot.config import Config, load_config
 from bot.content import Content
 from bot.db import Database
+from bot.demo_people import seed_demo_people
 from bot.handlers import chat, club_admin, events, hikes, moderation, profile
 from bot.matchmaking import Matchmaker
 
@@ -91,6 +92,7 @@ async def main() -> None:
     bot = Bot(config.token, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     db, content = Database(config.db_path), Content(config.data_dir)
     db.hikes.seed(content.hikes_seed)
+    seed_demo_people(db)
     dp = build_dispatcher(db, content, config)
     # API поднимаем первым: Railway проверяет /health сразу после старта, даже если Telegram ещё не ответил
     api_task = asyncio.create_task(run_api(bot, db, content, config))

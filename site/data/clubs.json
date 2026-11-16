@@ -11,9 +11,9 @@
   {"id": "remus", "partner": true, "page": "#remus", "cta": "🎫 Билеты на DTMM", "logo": "img/clubs/remus.jpg", "name": "Remus", "emoji": "🐺", "instagram": "remus.almaty", "category": "Ивенты", "colors": ["#8a5cff", "#1a0f3a"], "wide": true,
    "description": "Стая, которая больше чем семья. Культурные и развлекательные вечеринки для студентов Алматы.",
    "activities": ["DTMM", "Remus Night", "Secret Santa", "AVA"]},
-  {"id": "mof", "logo": "img/clubs/mof.jpg", "name": "MOF — Mass On Family", "emoji": "🔥", "instagram": "mof.almaty", "category": "Ивенты", "colors": ["#ff4a3a", "#3a0a06"],
+  {"id": "mof", "partner": true, "page": "#mof", "cta": "🎫 Билеты на MOF DATE", "logo": "img/clubs/mof.jpg", "name": "MOF — Mass On Family", "emoji": "🔥", "instagram": "mof.almaty", "category": "Ивенты", "colors": ["#ff4a3a", "#3a0a06"],
    "description": "Семья, которая чтит традиции. Проводят мероприятия по всему городу и в других вузах.",
-   "activities": ["MOF ISSYK", "MOF DAY", "Photo-hunting", "MOF CAMPING"]},
+   "activities": ["MOF DATE", "MOF ISSYK", "MOF DAY", "Photo-hunting", "MOF CAMPING"]},
   {"id": "summit", "partner": true, "page": "#summit", "cta": "🏔 Походы и запись", "logo": "img/clubs/summit.jpg", "name": "Summit Seekers", "emoji": "🏔️", "instagram": "summit.seekers.almau", "category": "Спорт", "colors": ["#3ad4ff", "#05263a"],
    "description": "Горный клуб: безопасный туризм, выносливость, командная работа и бережное отношение к природе.",
    "activities": ["Лекции о туризме", "Походы в горы"]},
@@ -26,7 +26,7 @@
   {"id": "qadam", "name": "Qadam", "emoji": "👣", "instagram": null, "category": "Сообщество", "colors": ["#d4ff3a", "#1f2a05"],
    "description": "Студенческое сообщество AlmaU. Описание клуба уточняется: напишите нам, и мы добавим подробности.",
    "activities": ["Скоро"]},
-  {"id": "mafia", "logo": "img/clubs/mafia.jpg", "name": "Mafia AlmaU", "emoji": "🕵️", "instagram": "mafia.almau", "category": "Игры", "colors": ["#c21e3a", "#1c0309"], "wide": true,
-   "description": "Город засыпает, просыпается мафия. Еженедельные пятничные игры в формате антикафе и турниры.",
-   "activities": ["Пятничные игры", "Tokyo Drift", "Пятница 13-е"]}
+  {"id": "mafia", "partner": true, "page": "#mafia", "cta": "🎲 Записаться на игру · пт 18:30", "logo": "img/clubs/mafia.jpg", "name": "Mafia AlmaU", "emoji": "🕵️", "instagram": "mafia.almau", "category": "Игры", "colors": ["#c21e3a", "#1c0309"], "wide": true,
+   "description": "Город засыпает, просыпается мафия. Каждую пятницу в 18:30 — мафия, бункер и D&D в формате антикафе, плюс турниры.",
+   "activities": ["Мафия", "Бункер", "D&D", "Tokyo Drift", "Пятница 13-е"]}
 ]

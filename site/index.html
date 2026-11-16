@@ -123,6 +123,19 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
   background:radial-gradient(circle at 15% 0,var(--glow),transparent 55%),radial-gradient(circle at 100% 100%,rgba(91,49,189,.25),transparent 50%),var(--panel)}
 #p-remus .club-hero img{background:#000;border-color:#3a3a46}
 #p-hunters .club-hero img{background:#fff;border-color:#5a1820}
+/* Mafia — неоновый красный, как на логотипе; MOF — чёрно-белый сплит */
+#p-mafia{--acc:#ff3347;--glow:rgba(255,30,60,.32)}
+#p-mafia .club-hero img{background:#000;border-color:#ff3347;box-shadow:0 0 24px rgba(255,51,71,.45)}
+#p-mafia .club-hero h1{text-shadow:0 0 18px rgba(255,51,71,.55)}
+#p-mof{--acc:#f3f1ea;--glow:rgba(243,241,234,.12)}
+#p-mof .club-hero.themed{background:linear-gradient(105deg,#050507 0 50%,#16151a 50% 100%)}
+#p-mof .club-hero img{background:#fff;border-color:#f3f1ea}
+.lead select{background:#0b0b0f;border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--text);font:15px Manrope}
+.lead select:focus{outline:2px solid var(--acc);outline-offset:1px}
+.games{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.games div{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px}
+.games b{font-size:28px;display:block;margin-bottom:8px}.games h3{font-size:18px;margin-bottom:6px}.games p{color:var(--mute);margin:0;font-size:14px}
+@media(max-width:760px){.games{grid-template-columns:1fr}}
 .partner-form{max-width:none;margin:0}
 .partner-form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .partner-form label{display:grid;gap:6px;font-size:13px;color:var(--mute)}
@@ -130,6 +143,9 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .partner-split .pitch h2{font-size:clamp(24px,3vw,36px);margin-bottom:12px}
 .partner-split .pitch p{color:var(--mute);margin:0 0 14px}
 .partner-split .pitch ul{margin:0;padding-left:20px;color:#dcdce4;display:grid;gap:8px}
+/* Длинные кнопки партнёров («Записаться волонтёром на день открытых дверей») на телефоне переносим, а не растягиваем страницу */
+.club-hero .btn,.cta .btn,.partner-form .btn,.partner-card .btn{white-space:normal;text-align:center}
+.club-hero>div,.partner-split>*{min-width:0}
 @media(max-width:760px){.partner-split,.partner-form .row{grid-template-columns:1fr}.club-hero.themed{padding:28px 20px}}
 .club-hero{display:flex;gap:32px;align-items:center;flex-wrap:wrap;padding:56px 0 24px}
 .club-hero img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:3px solid var(--line);flex:none}
@@ -206,6 +222,8 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
   <a class="tab" href="#summit" data-p="summit">🏔 Summit Seekers</a>
   <a class="tab" href="#remus" data-p="remus">🐺 Remus</a>
   <a class="tab" href="#hunters" data-p="hunters">🦅 Hunters</a>
+  <a class="tab" href="#mafia" data-p="mafia">🕵️ Mafia</a>
+  <a class="tab" href="#mof" data-p="mof">🌳 MOF</a>
   <a class="tab" href="#chat" data-p="chat">💬 Анонимный чат</a>
   <a class="tab" href="#people" data-p="people">🔎 Люди</a>
   <a class="tab" href="#academics" data-p="academics">🎓 Учёба</a>
@@ -285,6 +303,18 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
     <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Hunters</h3>
     <p>Команда амбассадоров AlmaU: первыми встречают абитуриентов на днях открытых дверей.</p></div>
     <span class="btn sm">🙋 Стать волонтёром</span>
+   </a>
+   <a class="partner-card" href="#mafia">
+    <img src="img/clubs/mafia.jpg" alt="Логотип Mafia AlmaU">
+    <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>Mafia AlmaU</h3>
+    <p>Каждую пятницу в 18:30: мафия, бункер и D&amp;D в формате антикафе.</p></div>
+    <span class="btn sm">🎲 Записаться на игру</span>
+   </a>
+   <a class="partner-card" href="#mof">
+    <img src="img/clubs/mof.jpg" alt="Логотип MOF">
+    <div><span class="partner-badge">🤝 Партнёр Pople</span><h3>MOF — Mass On Family</h3>
+    <p>Семья, которая чтит традиции: мероприятия по всему городу и в других вузах.</p></div>
+    <span class="btn sm">🎫 Билеты на MOF DATE</span>
    </a>
   </div>
  </section>
@@ -469,6 +499,124 @@ footer{border-top:1px solid var(--line);color:var(--mute);font-size:14px;padding
  </section>
 
  <section><div class="cta"><img class="mark" src="img/clubs/hunters.jpg" alt="Логотип Hunters" style="background:#fff"><h2>Станешь лицом AlmaU на Open Day?</h2><p>Hunters — партнёр Pople.</p><div class="actions" style="justify-content:center"><a class="btn" href="#hunters" data-scroll="hunters-volunteer">🙋 Записаться волонтёром на день открытых дверей</a><a class="btn ghost" href="https://instagram.com/almau_hunters" target="_blank" rel="noopener">Instagram клуба</a></div></div></section>
+</div>
+
+<!-- MAFIA: партнёр -->
+<div class="page" id="p-mafia">
+ <div class="club-hero themed">
+  <img src="img/clubs/mafia.jpg" alt="Логотип Mafia AlmaU">
+  <div>
+   <span class="partner-badge">🤝 Партнёр Pople</span>
+   <h1>Mafia AlmaU</h1>
+   <p>Город засыпает, просыпается мафия. Каждую пятницу вечером — мафия, бункер и D&amp;D в формате антикафе, плюс тематические игры и турниры.</p>
+   <div class="actions">
+    <a class="btn" href="#mafia" data-scroll="mafia-signup">🎲 Записаться на игру в пятницу · 18:30</a>
+    <a class="btn ghost" href="https://instagram.com/mafia.almau" target="_blank" rel="noopener">Instagram клуба</a>
+   </div>
+  </div>
+ </div>
+
+ <section>
+  <div class="head"><div><h2>Во что играем по пятницам</h2><p>Сбор в 18:30. Новичкам объясняют правила — опыт не нужен.</p></div></div>
+  <div class="games">
+   <div><b>🕵️</b><h3>Мафия</h3><p>Классика: мирные жители против мафии, ведущий, ночные ходы и дневные обсуждения.</p></div>
+   <div><b>☢️</b><h3>Бункер</h3><p>Мест в бункере меньше, чем игроков. Убеди всех, что именно ты нужен для выживания.</p></div>
+   <div><b>🐉</b><h3>D&amp;D</h3><p>Настольная ролевая игра: создаёшь персонажа, мастер ведёт историю, кубики решают.</p></div>
+  </div>
+ </section>
+
+ <section id="mafia-signup">
+  <div class="partner-split">
+   <div class="pitch">
+    <span class="partner-badge">🎲 Пятница · 18:30</span>
+    <h2>Запись на пятничную игру</h2>
+    <p>Выбери игру и пятницу — организаторы Mafia AlmaU подтвердят место и пришлют адрес антикафе.</p>
+    <ul>
+     <li>Игры каждую пятницу, начало в 18:30.</li>
+     <li>Можно записаться сразу с друзьями.</li>
+     <li>Тематические вечера вроде Tokyo Drift и Пятницы 13-е — анонсы в Instagram клуба.</li>
+    </ul>
+   </div>
+   <form class="lead partner-form" id="mafia-signup-form">
+    <div class="row">
+     <label>Имя<input name="name" required maxlength="80" autocomplete="name"></label>
+     <label>Telegram или телефон<input name="contact" required maxlength="80" autocomplete="tel"></label>
+    </div>
+    <div class="row">
+     <label>Игра<select name="game" required>
+      <option value="Мафия">🕵️ Мафия</option>
+      <option value="Бункер">☢️ Бункер</option>
+      <option value="D&D">🐉 D&amp;D</option>
+      <option value="Любая">Любая, где есть места</option>
+     </select></label>
+     <label>Пятница<select name="friday" id="mafia-friday" required></select></label>
+    </div>
+    <label>Сколько человек<input name="qty" type="number" min="1" max="10" value="1" required></label>
+    <button class="btn" type="submit">🎲 Записаться на игру в пятницу · 18:30</button>
+    <p class="lead-status" id="mafia-signup-status" aria-live="polite"></p>
+   </form>
+  </div>
+ </section>
+
+ <section><div class="cta"><img class="mark" src="img/clubs/mafia.jpg" alt="Логотип Mafia AlmaU" style="background:#000"><h2>До встречи в пятницу в 18:30</h2><p>Mafia AlmaU — партнёр Pople.</p><div class="actions" style="justify-content:center"><a class="btn" href="#mafia" data-scroll="mafia-signup">🎲 Записаться на игру в пятницу · 18:30</a><a class="btn ghost" href="https://instagram.com/mafia.almau" target="_blank" rel="noopener">Instagram клуба</a></div></div></section>
+</div>
+
+<!-- MOF: партнёр -->
+<div class="page" id="p-mof">
+ <div class="club-hero themed">
+  <img src="img/clubs/mof.jpg" alt="Логотип MOF">
+  <div>
+   <span class="partner-badge">🤝 Партнёр Pople</span>
+   <h1>MOF — Mass On Family</h1>
+   <p>Семья, которая чтит традиции. MOF проводит мероприятия по всему городу и в других вузах: MOF DATE, MOF DAY, MOF ISSYK, фотоохота и кемпинг.</p>
+   <div class="actions">
+    <a class="btn" href="#mof" data-scroll="mof-tickets">🎫 Купить билет на MOF DATE</a>
+    <a class="btn ghost" href="https://instagram.com/mof.almaty" target="_blank" rel="noopener">Instagram клуба</a>
+   </div>
+  </div>
+ </div>
+
+ <section id="mof-tickets">
+  <div class="partner-split">
+   <div class="pitch">
+    <span class="partner-badge">🎫 MOF DATE</span>
+    <h2>Билеты на MOF DATE</h2>
+    <p>Оставь заявку на билет: организаторы MOF свяжутся с тобой, расскажут про оплату и пришлют билет.</p>
+    <ul>
+     <li>Дата, место и цена — у организаторов и в Instagram клуба.</li>
+     <li>Можно взять билеты сразу на компанию, до 10 штук.</li>
+     <li>Не с кем пойти? Найди компанию в анонимном чате Pople.</li>
+    </ul>
+   </div>
+   <form class="lead partner-form" id="mof-ticket-form">
+    <div class="row">
+     <label>Имя<input name="name" required maxlength="80" autocomplete="name"></label>
+     <label>Telegram или телефон<input name="contact" required maxlength="80" autocomplete="tel"></label>
+    </div>
+    <label>Сколько билетов<input name="qty" type="number" min="1" max="10" value="1" required></label>
+    <label>Комментарий<textarea name="note" maxlength="200" placeholder="Например: идём вдвоём"></textarea></label>
+    <button class="btn" type="submit">🎫 Купить билет на MOF DATE</button>
+    <p class="lead-status" id="mof-ticket-status" aria-live="polite"></p>
+   </form>
+  </div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Мероприятия семьи</h2><p>Отмечайся «Иду» во вкладке «Ивенты», чтобы найти компанию.</p></div></div>
+  <div class="grid" id="mof-events" aria-live="polite"></div>
+ </section>
+
+ <section>
+  <div class="head"><div><h2>Как купить билет</h2></div></div>
+  <div class="steps">
+   <div class="step"><span>1</span><h3>Оставь заявку</h3><p>Имя, контакт и сколько билетов нужно.</p></div>
+   <div class="step"><span>2</span><h3>Жди сообщения</h3><p>Организатор MOF напишет тебе в Telegram или позвонит.</p></div>
+   <div class="step"><span>3</span><h3>Оплати</h3><p>Способ оплаты и цену подскажет организатор.</p></div>
+   <div class="step"><span>4</span><h3>Приходи</h3><p>Покажи билет на входе — добро пожаловать в семью.</p></div>
+  </div>
+ </section>
+
+ <section><div class="cta"><img class="mark" src="img/clubs/mof.jpg" alt="Логотип MOF" style="background:#fff"><h2>Увидимся на MOF DATE?</h2><p>MOF — партнёр Pople.</p><div class="actions" style="justify-content:center"><a class="btn" href="#mof" data-scroll="mof-tickets">🎫 Купить билет на MOF DATE</a><a class="btn ghost" href="https://instagram.com/mof.almaty" target="_blank" rel="noopener">Instagram клуба</a></div></div></section>
 </div>
 
 <!-- EVENTS -->
@@ -921,7 +1069,7 @@ function initPartnerForm(formId, statusId, eventId, buildMessage, fallbackIg) {
 function prefillPartnerForms() {
   if (!chatUser) return;
   const full = [chatUser.first_name, chatUser.last_name].filter(Boolean).join(" ");
-  for (const id of ["remus-ticket-form", "hunters-volunteer-form"]) {
+  for (const id of ["remus-ticket-form", "hunters-volunteer-form", "mafia-signup-form", "mof-ticket-form"]) {
     const input = document.querySelector(`#${id} input[name=name]`);
     if (input && !input.value) input.value = full;
   }
@@ -974,7 +1122,55 @@ async function loadHunters() {
   } catch {}
 }
 
+// Ближайшие 4 пятницы для записи в Mafia. Если сегодня пятница и уже позже 18:30 —
+// начинаем со следующей недели, чтобы не записаться на игру, которая уже идёт.
+function upcomingFridays(count = 4) {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let add = (5 - d.getDay() + 7) % 7;
+  if (add === 0 && (now.getHours() > 18 || (now.getHours() === 18 && now.getMinutes() >= 30))) add = 7;
+  d.setDate(d.getDate() + add);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push(`${d.getDate()} ${MONTHS[d.getMonth()]}`);
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
+}
+
+function loadMafia() {
+  prefillPartnerForms();
+  const sel = document.getElementById("mafia-friday");
+  if (sel && !sel.options.length) {
+    sel.innerHTML = upcomingFridays().map((f, i) =>
+      `<option value="${esc(f)}">${i === 0 ? "Ближайшая" : "Пятница"}, ${esc(f)}, 18:30</option>`).join("");
+  }
+}
+
+async function loadMof() {
+  prefillPartnerForms();
+  const box = document.getElementById("mof-events");
+  const date = `<article class="hike">
+    <div class="when">Дата — у организаторов</div>
+    <h3>🎫 MOF DATE</h3>
+    <p>Мероприятие семьи MOF. Билеты — по заявке прямо здесь.</p>
+    <a class="btn sm" href="#mof" data-scroll="mof-tickets">Купить билет на MOF DATE</a>
+  </article>`;
+  try {
+    const events = (await partnerEventsList()).filter(e => e.club === "mof");
+    box.innerHTML = date + events.map(clubEventCard).join("");
+  } catch {
+    box.innerHTML = date;
+  }
+}
+
 function initPartners() {
+  initPartnerForm("mafia-signup-form", "mafia-signup-status", "mafia-friday",
+    d => `Игра в пятницу ${String(d.friday || "").trim()}, 18:30 · ${String(d.game || "Любая").trim()} · ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))} чел.`,
+    "mafia.almau");
+  initPartnerForm("mof-ticket-form", "mof-ticket-status", "mof-date",
+    d => `Билет на MOF DATE × ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))}${d.note ? `. ${String(d.note).trim()}` : ""}`,
+    "mof.almaty");
   initPartnerForm("remus-ticket-form", "remus-ticket-status", "dtmm",
     d => `Билет на DTMM × ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))}${d.note ? `. ${String(d.note).trim()}` : ""}`,
     "remus.almaty");
@@ -2498,13 +2694,15 @@ function enterAcademicsPage() {
 
 function route() {
   const p = (location.hash || "#home").slice(1);
-  const id = ["home", "clubs", "events", "summit", "remus", "hunters", "chat", "people", "academics"].includes(p) ? p : "home";
+  const id = ["home", "clubs", "events", "summit", "remus", "hunters", "mafia", "mof", "chat", "people", "academics"].includes(p) ? p : "home";
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
   window.scrollTo(0, 0);
   if (id === "summit") loadSummit();
   if (id === "remus") loadRemus();
   if (id === "hunters") loadHunters();
+  if (id === "mafia") loadMafia();
+  if (id === "mof") loadMof();
   if (id === "people") enterPeoplePage();
   if (id === "academics") enterAcademicsPage();
 }

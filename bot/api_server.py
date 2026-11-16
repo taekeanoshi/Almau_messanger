@@ -17,6 +17,7 @@ from bot.api import build_app
 from bot.config import BASE_DIR, _load_dotenv
 from bot.content import Content
 from bot.db import Database
+from bot.demo_people import seed_demo_people
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def main() -> None:
 
     db, content = Database(db_path), Content(data_dir)
     db.hikes.seed(content.hikes_seed)
+    seed_demo_people(db)
     app = build_app(db, content, bot=None, admin_ids=frozenset(), cors_origin=cors_origin,
                      admin_token=admin_token, brevo_api_key=brevo_api_key,
                      brevo_sender_email=brevo_sender_email, brevo_sender_name=brevo_sender_name)
