@@ -107,6 +107,17 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
   background:radial-gradient(circle at 15% 0,var(--glow),transparent 55%),radial-gradient(circle at 100% 100%,rgba(91,49,189,.25),transparent 50%),var(--panel)}
 #p-remus .club-hero img{background:#000;border-color:#3a3a46}
 #p-hunters .club-hero img{background:#fff;border-color:#5a1820}
+/* Mafia — неоновый красный, как на логотипе; MOF — чёрно-белый сплит */
+#p-mafia{--acc:#ff3347;--glow:rgba(255,30,60,.32)}
+#p-mafia .club-hero img{background:#000;border-color:#ff3347;box-shadow:0 0 24px rgba(255,51,71,.45)}
+#p-mafia .club-hero h1{text-shadow:0 0 18px rgba(255,51,71,.55)}
+#p-mof{--acc:#f3f1ea;--glow:rgba(243,241,234,.12)}
+#p-mof .club-hero.themed{background:linear-gradient(105deg,#050507 0 50%,#16151a 50% 100%)}
+#p-mof .club-hero img{background:#fff;border-color:#f3f1ea}
+.games{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.games div{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px}
+.games b{font-size:28px;display:block;margin-bottom:8px}.games h3{font-size:18px;margin-bottom:6px}.games p{color:var(--mute);margin:0;font-size:14px}
+@media(max-width:760px){.games{grid-template-columns:1fr}}
 .partner-form{max-width:none;margin:0}
 .partner-form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .partner-form label{display:grid;gap:6px;font-size:13px;color:var(--mute)}
@@ -114,6 +125,9 @@ code{background:#1c1c24;padding:2px 7px;border-radius:6px;color:var(--acc)}
 .partner-split .pitch h2{font-size:clamp(24px,3vw,36px);margin-bottom:12px}
 .partner-split .pitch p{color:var(--mute);margin:0 0 14px}
 .partner-split .pitch ul{margin:0;padding-left:20px;color:#dcdce4;display:grid;gap:8px}
+/* Длинные кнопки партнёров («Записаться волонтёром на день открытых дверей») на телефоне переносим, а не растягиваем страницу */
+.club-hero .btn,.cta .btn,.partner-form .btn,.partner-card .btn{white-space:normal;text-align:center}
+.club-hero>div,.partner-split>*{min-width:0}
 @media(max-width:760px){.partner-split,.partner-form .row{grid-template-columns:1fr}.club-hero.themed{padding:28px 20px}}
 .club-hero{display:flex;gap:32px;align-items:center;flex-wrap:wrap;padding:56px 0 24px}
 .club-hero img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:3px solid var(--line);flex:none}

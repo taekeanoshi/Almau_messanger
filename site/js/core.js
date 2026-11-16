@@ -332,6 +332,8 @@ function renderNav() {
     link("summit", "🏔 Summit Seekers"),
     link("remus", "🐺 Remus"),
     link("hunters", "🦅 Hunters"),
+    link("mafia", "🕵️ Mafia"),
+    link("mof", "🌳 MOF"),
     `<div class="sep"></div>`,
     hasRole("admin") ? link("admin", "🛠 Админка") : "",
     link("profile", "👤 Профиль"),

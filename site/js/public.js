@@ -1,5 +1,5 @@
 "use strict";
-// Публичные разделы: клубы, ивенты, партнёры (Summit Seekers, Remus, Hunters), заявки, цифры на главной.
+// Публичные разделы: клубы, ивенты, партнёры (Summit Seekers, Remus, Hunters, Mafia, MOF), заявки, цифры на главной.
 // Клубы и ивенты лежат в data/*.json — эти же файлы читает бэкенд.
 
 const G = ([a, b]) => `radial-gradient(circle at 70% 20%,${a},transparent 60%),linear-gradient(160deg,${b},#050507)`;
@@ -292,7 +292,7 @@ function initPartnerForm(formId, statusId, eventId, buildMessage, fallbackIg) {
 
 function prefillPartnerForms() {
   if (!chatUser) return;
-  for (const id of ["remus-ticket-form", "hunters-volunteer-form"]) {
+  for (const id of ["remus-ticket-form", "hunters-volunteer-form", "mafia-signup-form", "mof-ticket-form"]) {
     const name = document.querySelector(`#${id} input[name=name]`);
     if (name && !name.value) name.value = fullName(chatUser);
     const contact = document.querySelector(`#${id} input[name=contact]`);
@@ -345,12 +345,56 @@ async function loadHunters() {
   } catch {}
 }
 
+// ---------- Mafia и MOF ----------
+// Ближайшие 4 пятницы для записи в Mafia. Если сегодня пятница и уже позже 18:30 —
+// начинаем со следующей недели, чтобы не записаться на игру, которая уже идёт.
+function upcomingFridays(count = 4) {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let add = (5 - d.getDay() + 7) % 7;
+  if (add === 0 && (now.getHours() > 18 || (now.getHours() === 18 && now.getMinutes() >= 30))) add = 7;
+  d.setDate(d.getDate() + add);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push(`${d.getDate()} ${MONTHS[d.getMonth()]}`);
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
+}
+
+function loadMafia() {
+  prefillPartnerForms();
+  const sel = $("mafia-friday");
+  if (sel && !sel.options.length) {
+    sel.innerHTML = upcomingFridays().map((f, i) =>
+      `<option value="${esc(f)}">${i === 0 ? "Ближайшая" : "Пятница"}, ${esc(f)}, 18:30</option>`).join("");
+  }
+}
+
+async function loadMof() {
+  prefillPartnerForms();
+  const box = $("mof-events");
+  const date = `<article class="hike">
+    <div class="when">Дата — у организаторов</div>
+    <h3>🎫 MOF DATE</h3>
+    <p>Мероприятие семьи MOF. Билеты — по заявке прямо здесь.</p>
+    <a class="btn sm" href="#mof" data-scroll="mof-tickets">Купить билет на MOF DATE</a>
+  </article>`;
+  try {
+    box.innerHTML = date + (await eventsList()).filter(e => e.club === "mof").map(clubEventCard).join("");
+  } catch {
+    box.innerHTML = date;
+  }
+}
+
 function initPublic() {
   definePage("clubs");
   definePage("events", {enter: enhanceEventsWithGoing});
   definePage("summit", {enter: loadSummit});
   definePage("remus", {enter: loadRemus});
   definePage("hunters", {enter: loadHunters});
+  definePage("mafia", {enter: loadMafia});
+  definePage("mof", {enter: loadMof});
   definePage("privacy");
 
   initLeadForm();
@@ -360,6 +404,12 @@ function initPublic() {
   initPartnerForm("hunters-volunteer-form", "hunters-volunteer-status", "open-day",
     d => `Волонтёр на день открытых дверей (Hunters)${d.course ? ` · ${String(d.course).trim()}` : ""}${d.note ? `. ${String(d.note).trim()}` : ""}`,
     "almau_hunters");
+  initPartnerForm("mafia-signup-form", "mafia-signup-status", "mafia-friday",
+    d => `Игра в пятницу ${String(d.friday || "").trim()}, 18:30 · ${String(d.game || "Любая").trim()} · ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))} чел.`,
+    "mafia.almau");
+  initPartnerForm("mof-ticket-form", "mof-ticket-status", "mof-date",
+    d => `Билет на MOF DATE × ${Math.min(10, Math.max(1, parseInt(d.qty, 10) || 1))}${d.note ? `. ${String(d.note).trim()}` : ""}`,
+    "mof.almaty");
 
   document.addEventListener("change", e => {
     const box = e.target.closest("[data-gear]");
