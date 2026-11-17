@@ -3,21 +3,21 @@ from piper import PiperVoice
 try:
     from piper import SynthesisConfig
 except Exception: SynthesisConfig=None
-name=sys.argv[1]
+name=sys.argv[1]; LS=float(sys.argv[2]) if len(sys.argv)>2 else 1.0
 v=PiperVoice.load(f'ru_RU-{name}-medium.onnx')
 print('sr',v.config.sample_rate)
 # (старт с, текст, макс. длительность с)
 LINES=[(0.55,"Не с кем идти?",1.3),(1.95,"Кому-то тоже.",1.5),
- (4.55,"Попл. Учёба и общение Алма-Ю в одном месте.",3.1),(7.7,"Расписание, оценки, задания и экзамены.",2.3),
+ (4.45,"Попл. Учёба и общение Алма-Ю в одном месте.",3.2),(7.4,"Расписание, оценки, задания и экзамены.",2.9),
  (10.8,"Анонимный чат: ник вместо имени, пока сам не раскроешься.",4.0),
- (16.8,"Отметься «Иду» и найди, с кем пойти.",2.6),(19.7,"Анонимно соединим с тем, кто тоже идёт.",2.2),
- (22.6,"Клубы Алма-Ю уже здесь. Запись на походы Саммит Сикерс.",3.3),
+ (16.8,"Отметься «Иду» и найди, с кем пойти.",2.6),(19.65,"Анонимно соединим с тем, кто тоже идёт.",2.75),
+ (22.45,"Клубы Алма-Ю уже здесь. Запись на походы Саммит Сикерс.",3.7),
  (26.7,"Попл. Зайди и попробуй.",2.3)]
 SR=v.config.sample_rate; out=np.zeros(int(30.5*44100))
 for i,(t0,txt,mx) in enumerate(LINES):
     fn=f'{name}_{i}.wav'
     with wave.open(fn,'wb') as w:
-        if SynthesisConfig: v.synthesize_wav(txt,w,syn_config=SynthesisConfig(length_scale=1.0))
+        if SynthesisConfig: v.synthesize_wav(txt,w,syn_config=SynthesisConfig(length_scale=LS*(0.85 if i==3 else 1.0)))
         else: v.synthesize(txt,w)
     d=wave.open(fn).getnframes()/SR
     tempo=max(1.0,d/mx)
