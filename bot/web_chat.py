@@ -804,7 +804,7 @@ async def list_blocks(request: web.Request) -> web.Response:
 # обычный поиск по имени/фамилии среди зарегистрированных и постоянный (не одноразовый,
 # как в подборе по полу) диалог с конкретным человеком, по одному диалогу на пару.
 
-SEARCH_LIMIT = 100
+SEARCH_LIMIT = 300
 ROLE_LABELS = {"teacher": "Преподаватель", "registrar": "Отдел расписания", "admin": "Администратор"}
 
 
@@ -815,6 +815,7 @@ def _public_user(row) -> dict:
         "id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"],
         "course": row["course"], "specialty": row["specialty"],
         "role_label": ROLE_LABELS.get(row["role"], ""),
+        "demo": bool(row["is_demo"]),
     }
 
 

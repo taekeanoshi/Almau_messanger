@@ -9,6 +9,7 @@ import secrets
 from aiohttp import web
 
 from bot.db import Database
+from bot.demo_people import seed_demo_people
 from bot.web_chat import _hash_invite_key, read_json_body, require_session
 
 VALID_ROLES = {"student", "teacher", "registrar", "admin"}
@@ -29,6 +30,7 @@ def _admin_user(row) -> dict:
         "email": row["email"], "phone": row["phone"], "role": row["role"],
         "banned": bool(row["banned"]), "email_verified": bool(row["email_verified"]),
         "course": row["course"], "specialty": row["specialty"], "created_at": row["created_at"],
+        "demo": bool(row["is_demo"]),
     }
 
 
@@ -157,7 +159,35 @@ async def hike_signups(request: web.Request) -> web.Response:
     return web.json_response({"hikes": out})
 
 
+async def demo_users_info(request: web.Request) -> web.Response:
+    _require_admin(request)
+    return web.json_response({"count": request.app["db"].count_demo_users()})
+
+
+async def demo_users_seed(request: web.Request) -> web.Response:
+    """Создаёт демо-студентов для витрины (до `count`, по умолчанию 150). Они помечены «демо»,
+    не считаются в публичной статистике, войти под ними нельзя."""
+    _require_admin(request)
+    data = await read_json_body(request) if request.can_read_body else {}
+    try:
+        count = int(data.get("count", 150))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(reason="count must be an integer")
+    db: Database = request.app["db"]
+    added = seed_demo_people(db, max(1, min(count, 500)))
+    return web.json_response({"ok": True, "added": added, "count": db.count_demo_users()})
+
+
+async def demo_users_delete(request: web.Request) -> web.Response:
+    _require_admin(request)
+    removed = request.app["db"].delete_demo_users()
+    return web.json_response({"ok": True, "removed": removed})
+
+
 def register_routes(app: web.Application) -> None:
+    app.router.add_get("/api/admin/demo-users", demo_users_info)
+    app.router.add_post("/api/admin/demo-users/seed", demo_users_seed)
+    app.router.add_post("/api/admin/demo-users/delete", demo_users_delete)
     app.router.add_get("/api/admin/overview", overview)
     app.router.add_get("/api/admin/users", list_users)
     app.router.add_post("/api/admin/users/role", set_role)

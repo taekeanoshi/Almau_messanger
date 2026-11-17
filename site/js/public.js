@@ -116,11 +116,12 @@ async function fetchJson(url) {
   return r.json();
 }
 
-let siteEvents = null;
+let siteEvents = null, siteClubs = [];
 async function loadClubsAndEvents() {
   try {
     const [clubs, events] = await Promise.all([fetchJson("data/clubs.json"), fetchJson("data/events.json")]);
     siteEvents = events;
+    siteClubs = clubs;
     clubLogos = Object.fromEntries(clubs.filter(c => c.logo).map(c => [c.id, c.logo]));
     mount("clubs", "cf", clubs, clubTile);
     mount("events", "ef", events, eventTile, enhanceEventsWithGoing);
@@ -387,8 +388,33 @@ async function loadMof() {
   }
 }
 
+// Вкладка «Партнёры»: все клубы с partner:true из data/clubs.json — добавить клуб = добавить запись в json.
+function partnerCard(c) {
+  return `<article class="partner-tile">
+    <img src="${esc(c.logo || "img/logo.png")}" alt="Логотип ${esc(c.name)}" loading="lazy">
+    <div class="grow"><span class="partner-badge">🤝 Партнёр Pople</span><h3>${esc(c.name)}</h3>
+      <p>${esc(c.description)}</p>
+      <div class="chips" style="margin-top:10px">${(c.activities || []).map(a => `<span>${esc(a)}</span>`).join("")}</div></div>
+    <div class="actions">
+      <a class="btn sm" href="${esc(c.page || "#clubs")}">${esc(c.cta || "Подробнее")}</a>
+      ${c.instagram ? `<a class="btn ghost sm" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener noreferrer">Instagram</a>` : ""}
+    </div></article>`;
+}
+
+async function renderPartners() {
+  const box = $("partners-list");
+  if (!siteClubs.length) {
+    try { siteClubs = await fetchJson("data/clubs.json"); }
+    catch { box.innerHTML = `<div class="empty">Не удалось загрузить список. Обновите страницу.</div>`; return; }
+  }
+  const partners = siteClubs.filter(c => c.partner);
+  $("partners-count").textContent = partners.length ? `${partners.length}` : "";
+  box.innerHTML = partners.length ? partners.map(partnerCard).join("") : `<div class="empty">Партнёров пока нет.</div>`;
+}
+
 function initPublic() {
   definePage("clubs");
+  definePage("partners", {enter: renderPartners});
   definePage("events", {enter: enhanceEventsWithGoing});
   definePage("summit", {enter: loadSummit});
   definePage("remus", {enter: loadRemus});

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS web_users (
     specialty     TEXT NOT NULL DEFAULT '',
     nickname      TEXT NOT NULL DEFAULT '',  -- анонимный ник, виден собеседнику вместо имени
     role          TEXT NOT NULL DEFAULT 'student',  -- 'student' | 'teacher' | 'registrar' | 'admin'
+    is_demo       INTEGER NOT NULL DEFAULT 0,       -- 1 = демо-аккаунт для витрины, не настоящий человек
     banned        INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
 );
@@ -358,6 +359,7 @@ class Database:
                 "specialty": "ALTER TABLE web_users ADD COLUMN specialty TEXT NOT NULL DEFAULT ''",
                 "nickname": "ALTER TABLE web_users ADD COLUMN nickname TEXT NOT NULL DEFAULT ''",
                 "role": "ALTER TABLE web_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'",
+                "is_demo": "ALTER TABLE web_users ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0",
             },
             "web_messages": {
                 "kind": "ALTER TABLE web_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
@@ -477,7 +479,7 @@ class Database:
             "event_dialogs": q("SELECT COUNT(*) FROM dialogs WHERE event_id IS NOT NULL"),
             "reports": q("SELECT COUNT(*) FROM reports"),
             "leads": q("SELECT COUNT(*) FROM site_leads"),
-            "web_users": q("SELECT COUNT(*) FROM web_users"),
+            "web_users": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 0"),  # демо-аккаунты не считаем: цифры показываются на главной
             "web_dialogs": q("SELECT COUNT(*) FROM web_dialogs"),
             "web_event_dialogs": q("SELECT COUNT(*) FROM web_dialogs WHERE event_id IS NOT NULL"),
         }
@@ -1339,6 +1341,24 @@ class Database:
             cur = self.conn.execute("UPDATE web_users SET role = ? WHERE id = ?", (role, user_id))
         return cur.rowcount > 0
 
+    def mark_web_user_demo(self, email: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE web_users SET is_demo = 1 WHERE email = ?", (email,))
+
+    def mark_legacy_demo_users(self) -> None:
+        """Первые демо-аккаунты создавались без пометки — отмечаем их по зарезервированной почте."""
+        with self.conn:
+            self.conn.execute("UPDATE web_users SET is_demo = 1 WHERE is_demo = 0 AND email LIKE 'demo%@example.com'")
+
+    def count_demo_users(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM web_users WHERE is_demo = 1").fetchone()[0]
+
+    def delete_demo_users(self) -> int:
+        ids = [r["id"] for r in self.conn.execute("SELECT id FROM web_users WHERE is_demo = 1")]
+        for user_id in ids:
+            self.delete_web_account(user_id)
+        return len(ids)
+
     def count_web_admins(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM web_users WHERE role = 'admin' AND banned = 0").fetchone()[0]
 
@@ -1537,8 +1557,9 @@ class Database:
     def admin_overview(self) -> dict[str, int]:
         q = lambda sql, *args: self.conn.execute(sql, args).fetchone()[0]  # noqa: E731
         return {
-            "users": q("SELECT COUNT(*) FROM web_users"),
-            "students": q("SELECT COUNT(*) FROM web_users WHERE role = 'student'"),
+            "users": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 0"),
+            "demo_users": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 1"),
+            "students": q("SELECT COUNT(*) FROM web_users WHERE role = 'student' AND is_demo = 0"),
             "teachers": q("SELECT COUNT(*) FROM web_users WHERE role = 'teacher'"),
             "registrars": q("SELECT COUNT(*) FROM web_users WHERE role = 'registrar'"),
             "admins": q("SELECT COUNT(*) FROM web_users WHERE role = 'admin'"),

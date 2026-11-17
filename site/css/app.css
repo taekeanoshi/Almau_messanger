@@ -388,3 +388,12 @@ details.course .body{padding:0 20px 20px}
 .count{font-weight:700}
 @media(max-width:520px){.tiles{grid-template-columns:repeat(3,1fr)}.tiles div{padding:10px 12px}.tiles b{font-size:20px}}
 details.course select,.att-row select{background:#0b0b0f;border:1px solid var(--line);border-radius:10px;padding:7px 9px;color:var(--text);font:14px Manrope,system-ui,sans-serif;max-width:100%}
+
+/* вкладка «Партнёры» */
+.partner-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.partner-tile{display:flex;flex-direction:column;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px}
+.partner-tile:hover{border-color:var(--acc)}
+.partner-tile>img{width:84px;height:84px;border-radius:50%;object-fit:cover;background:#fff}
+.partner-tile h3{font-size:20px;margin:8px 0 6px}.partner-tile p{margin:0;color:var(--mute);font-size:15px}
+.partner-tile .actions{margin-top:auto}
+.pill.demo{color:var(--mute);border-style:dashed}

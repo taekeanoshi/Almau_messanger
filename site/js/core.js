@@ -273,6 +273,9 @@ function appendMessages(box, messages, revealLabel) {
 // ---------- маршрутизация ----------
 // definePage("academics", {auth: true, roles: [...], enter() {...}, leave() {...}})
 const PAGES = {};
+// Страницы клубов-партнёров открываются из вкладки «Партнёры» — в меню подсвечиваем её.
+const PARTNER_PAGES = new Set(["summit", "remus", "hunters", "mafia", "mof"]);
+const navTabOf = id => (PARTNER_PAGES.has(id) ? "partners" : id);
 let currentPage = null;
 function definePage(id, opts = {}) { PAGES[id] = opts; }
 
@@ -292,7 +295,7 @@ function route() {
   const changed = currentPage !== id;
   currentPage = id;
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
-  document.querySelectorAll("#nav-drawer .tab").forEach(x => x.classList.toggle("on", x.dataset.p === id));
+  document.querySelectorAll("#nav-drawer .tab").forEach(x => x.classList.toggle("on", x.dataset.p === navTabOf(id)));
   if (changed) window.scrollTo(0, 0);
   closeNavDrawer();
   if (PAGES[id].enter) PAGES[id].enter();
@@ -318,7 +321,7 @@ function renderNav() {
   const drawer = $("nav-drawer");
   if (!authed) { drawer.innerHTML = ""; closeNavDrawer(); return; }
 
-  const link = (p, label, extra = "") => `<a class="tab ${currentPage === p ? "on" : ""}" href="#${p}" data-p="${p}"><span>${label}</span>${extra}</a>`;
+  const link = (p, label, extra = "") => `<a class="tab ${navTabOf(currentPage) === p ? "on" : ""}" href="#${p}" data-p="${p}"><span>${label}</span>${extra}</a>`;
   const unread = unreadCount ? `<span class="count">${unreadCount}</span>` : "";
   const items = [
     `<div class="nav-user"><b>${esc(fullName(chatUser))}</b><span>${esc(ROLE_NAMES[chatUser.role] || "")}</span></div>`,
@@ -329,11 +332,7 @@ function renderNav() {
     `<div class="sep"></div>`,
     link("events", "🎉 Ивенты"),
     link("clubs", "🎭 Клубы"),
-    link("summit", "🏔 Summit Seekers"),
-    link("remus", "🐺 Remus"),
-    link("hunters", "🦅 Hunters"),
-    link("mafia", "🕵️ Mafia"),
-    link("mof", "🌳 MOF"),
+    link("partners", "🤝 Партнёры"),
     `<div class="sep"></div>`,
     hasRole("admin") ? link("admin", "🛠 Админка") : "",
     link("profile", "👤 Профиль"),

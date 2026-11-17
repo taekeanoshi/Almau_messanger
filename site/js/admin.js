@@ -6,7 +6,7 @@ let adminTab = "users", adminSearchTimer = null;
 const ADMIN_TILES = [
   ["users", "аккаунтов"], ["students", "студентов"], ["teachers", "преподавателей"], ["registrars", "отдел расписания"],
   ["banned", "заблокировано"], ["open_reports", "открытых жалоб"], ["dialogs", "диалогов"], ["messages", "сообщений"],
-  ["courses", "дисциплин"], ["leads", "заявок"], ["searching_now", "ищут собеседника"],
+  ["courses", "дисциплин"], ["demo_users", "демо-аккаунтов"], ["leads", "заявок"], ["searching_now", "ищут собеседника"],
 ];
 
 async function loadAdminOverview() {
@@ -117,7 +117,21 @@ async function renderAdminHikes() {
   } catch (err) { body.innerHTML = `<div class="empty">${esc(explain(err, "Не получилось загрузить походы."))}</div>`; }
 }
 
-const ADMIN_TABS = {users: renderAdminUsers, reports: renderAdminReports, keys: renderAdminKeys, leads: renderAdminLeads, hikes: renderAdminHikes};
+async function renderAdminDemo() {
+  const body = $("admin-body");
+  let count = 0;
+  try { count = (await api("/api/admin/demo-users")).count; } catch {}
+  body.innerHTML = `<div class="card stack">
+    <p style="margin:0">Демо-аккаунты нужны, чтобы в разделе «Люди» было с кем познакомиться, пока платформа пустая. В списке они с пометкой «демо», войти под ними нельзя, в публичную статистику (цифры на главной) они не входят.</p>
+    <p style="margin:0"><b>Сейчас демо-аккаунтов: ${count}</b></p>
+    <div class="actions">
+      <button type="button" class="btn" data-admin-demo="seed">Создать 150 демо-людей</button>
+      <button type="button" class="btn danger" data-admin-demo="delete">Удалить всех демо</button>
+    </div>
+    <p class="muted small" style="margin:0">Перед показом настоящим пользователям лучше удалить демо — или оставить пометку: она не даёт принять их за реальных людей.</p></div>`;
+}
+
+const ADMIN_TABS = {demo: renderAdminDemo, users: renderAdminUsers, reports: renderAdminReports, keys: renderAdminKeys, leads: renderAdminLeads, hikes: renderAdminHikes};
 
 function showAdminTab(tab) {
   adminTab = tab in ADMIN_TABS ? tab : "users";
@@ -171,6 +185,18 @@ function initAdmin() {
         loadAdminOverview();
         renderAdminReports();
       } catch (err) { fail(err, "Не получилось закрыть жалобу."); }
+      return;
+    }
+    const demoBtn = e.target.closest("[data-admin-demo]");
+    if (demoBtn) {
+      const action = demoBtn.dataset.adminDemo;
+      if (action === "delete" && !await askConfirm("Все демо-аккаунты исчезнут из раздела «Люди». Настоящие пользователи не пострадают.", {title: "Удалить демо-людей?", ok: "Удалить", danger: true})) return;
+      try {
+        const r = await api(`/api/admin/demo-users/${action}`, {method: "POST", body: action === "seed" ? {count: 150} : {}});
+        toast(action === "seed" ? `Создано демо-людей: ${r.added}.` : `Удалено демо-людей: ${r.removed}.`, "ok");
+        loadAdminOverview();
+        renderAdminDemo();
+      } catch (err) { fail(err, "Не получилось."); }
       return;
     }
     const keyBtn = e.target.closest("[data-admin-key]");
