@@ -17,7 +17,7 @@ function renderPeopleResults(users, query) {
   }
   box.innerHTML = users.map(u => `<div class="people-row"><span class="row" style="flex-wrap:nowrap;min-width:0">
       <span class="avatar">${esc(initials(u))}</span>
-      <span class="grow"><b>${esc(fullName(u))}</b>${u.demo ? ` <span class="pill demo" title="Демо-аккаунт: показывается для примера, ответа не будет">демо</span>` : ""}<small>${esc(personSub(u))}</small></span></span>
+      <span class="grow"><b>${esc(fullName(u))}</b><small>${esc(personSub(u))}</small></span></span>
     <button type="button" class="btn sm" data-start-direct="${u.id}">Написать</button></div>`).join("");
 }
 
@@ -65,8 +65,7 @@ function openDirectChat(dialogId, partner) {
   peopleSince = 0;
   $("people-chat-box").innerHTML = "";
   $("people-chat-partner-name").textContent = fullName(partner);
-  $("people-chat-sub").textContent = partner.demo ? "Демо-аккаунт: показан для примера, ответа не будет."
-    : personSub(partner) || "Обычный чат — собеседник видит твоё имя.";
+  $("people-chat-sub").textContent = personSub(partner) || "Обычный чат — собеседник видит твоё имя.";
   $("people-list").hidden = true;
   $("people-chat").hidden = false;
   clearInterval(peopleListTimer);

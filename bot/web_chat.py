@@ -815,7 +815,6 @@ def _public_user(row) -> dict:
         "id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"],
         "course": row["course"], "specialty": row["specialty"],
         "role_label": ROLE_LABELS.get(row["role"], ""),
-        "demo": bool(row["is_demo"]),
     }
 
 

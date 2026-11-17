@@ -122,13 +122,13 @@ async function renderAdminDemo() {
   let count = 0;
   try { count = (await api("/api/admin/demo-users")).count; } catch {}
   body.innerHTML = `<div class="card stack">
-    <p style="margin:0">Демо-аккаунты нужны, чтобы в разделе «Люди» было с кем познакомиться, пока платформа пустая. В списке они с пометкой «демо», войти под ними нельзя, в публичную статистику (цифры на главной) они не входят.</p>
+    <p style="margin:0">Демо-аккаунты нужны, чтобы в разделе «Люди» было с кем познакомиться, пока платформа пустая. В «Людях» они выглядят как обычные аккаунты, войти под ними нельзя, в публичную статистику (цифры на главной) они не входят. Пользователям их не отличить, поэтому удалите их, когда придут настоящие студенты.</p>
     <p style="margin:0"><b>Сейчас демо-аккаунтов: ${count}</b></p>
     <div class="actions">
       <button type="button" class="btn" data-admin-demo="seed">Создать 150 демо-людей</button>
       <button type="button" class="btn danger" data-admin-demo="delete">Удалить всех демо</button>
     </div>
-    <p class="muted small" style="margin:0">Перед показом настоящим пользователям лучше удалить демо — или оставить пометку: она не даёт принять их за реальных людей.</p></div>`;
+    <p class="muted small" style="margin:0">Нажмите «Удалить всех демо» перед тем, как открыть платформу настоящим студентам.</p></div>`;
 }
 
 const ADMIN_TABS = {demo: renderAdminDemo, users: renderAdminUsers, reports: renderAdminReports, keys: renderAdminKeys, leads: renderAdminLeads, hikes: renderAdminHikes};

@@ -59,10 +59,10 @@ def test_demo_accounts_are_labelled_hidden_from_public_stats_and_removable_by_ad
                               json={"email": "boss@example.org", "role": "admin"})
             h = {"Authorization": f"Bearer {student['token']}"}
 
-            # Все 150 демо-людей видны в поиске (и помечены), а настоящие — без пометки
+            # Все 150 демо-людей видны в поиске, и по ответу не отличить их от остальных
             resp = await client.get("/api/chat/direct/search-users", headers=h)
             users = (await resp.json())["users"]
-            assert len(users) == 151 and sum(u["demo"] for u in users) == 150
+            assert len(users) == 151 and all("demo" not in u for u in users)
 
             # В публичной статистике и в цифрах админки они не считаются настоящими
             assert (await (await client.get("/api/stats")).json())["users"] == 2
