@@ -5,9 +5,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from bot import hike_format as fmt
 from bot import hikes as hk
-from bot import weather
 from bot.config import BASE_DIR
 from bot.content import Content
 from bot.db import Database
@@ -153,25 +151,6 @@ def test_purge_removes_names_but_keeps_statistics():
     assert db.hikes.report("summit")["totals"]["signups"] == 1
 
 
-def test_report_counts_views_signups_and_sources():
-    db = Database(":memory:")
-    h = make(db, cap=1)
-    for uid, src in ((1, "ig"), (2, "ig"), (3, "site"), (4, "")):
-        db.hikes.log_view(h.id, uid, src)
-    db.hikes.log_view(h.id, 1, "ig")                       # повторный просмотр не считается
-    db.hikes.signup(h.id, 1, "А", "+77071111111", "ig", at=BEFORE)
-    db.hikes.signup(h.id, 3, "В", "+77073333333", "site", at=BEFORE)   # лист ожидания
-    db.hikes.check_in(h.id, 1)
-    r = db.hikes.report("summit")
-    row = r["hikes"][0]
-    assert (row["views"], row["signups"], row["waitlist"], row["checkins"], row["going_now"]) == (4, 1, 1, 1, 1)
-    assert r["sources"]["ig"] == {"views": 2, "signups": 1}
-    assert r["sources"]["site"] == {"views": 1, "signups": 1}
-    assert r["sources"][""] == {"views": 1, "signups": 0}
-    text = fmt.report_text(r)
-    assert "Instagram: 2 → 1" in text and "Сайт: 1 → 1" in text and "Напрямую в боте" in text
-
-
 def test_last_view_src_and_kv():
     db = Database(":memory:")
     h = make(db)
@@ -185,83 +164,11 @@ def test_last_view_src_and_kv():
     assert db.hikes.kv_get("x") == "2"
 
 
-def test_format_escapes_html_and_shows_partner():
-    db = Database(":memory:")
-    h = db.hikes.create(club_id="summit", title="<b>Хак</b>", start_at=START, meeting_point="<i>у входа</i>", capacity=2)
-    text = fmt.card_text(h, 0, 0)
-    assert "<b>Хак</b>" not in text and "&lt;b&gt;Хак&lt;/b&gt;" in text
-    assert "партнёр Almau Messenger" in text and "Свободно мест: 2 из 2" in text
-    assert "24 октября, сб, 07:00" in text
-    assert "Мест нет" in fmt.card_text(h, 2, 3) and "лист ожидания: 3" in fmt.card_text(h, 2, 3).replace("В листе", "лист")
-
-
-def test_csv_has_bom_and_rows():
-    db = Database(":memory:")
-    h = make(db, cap=1)
-    db.hikes.signup(h.id, 1, "Айдар", "+77071111111", "ig", at=BEFORE)
-    db.hikes.signup(h.id, 2, "Дана", "+77072222222", at=BEFORE)
-    raw = fmt.csv_bytes(db.hikes.signups(h.id))
-    assert raw.startswith(b"\xef\xbb\xbf")
-    body = raw.decode("utf-8-sig")
-    assert "Айдар" in body and "лист ожидания" in body and "Instagram" in body
-
-
-def test_chunk_splits_long_text_by_lines():
-    parts = fmt.chunk("\n".join(["строка " * 10] * 200), limit=500)
-    assert len(parts) > 5 and all(len(p) <= 500 for p in parts)
-
-
-# ---------- погода ----------
-
 @pytest.fixture(autouse=True)
-def clean_weather_cache():
-    weather._cache.clear()
-
-
 def payload(day="2026-10-24", code=3, tmin=2.0, tmax=11.0, precip=0.2, wind=4.0):
     return {"daily": {"time": [day], "weather_code": [code], "temperature_2m_max": [tmax],
                       "temperature_2m_min": [tmin], "precipitation_sum": [precip], "wind_speed_10m_max": [wind]}}
 
-
-def forecast(monkeypatch, data, day=date(2026, 10, 24), today=date(2026, 10, 23)):
-    async def fake(url, params):
-        return data
-    monkeypatch.setattr(weather, "fetch_json", fake)
-    return asyncio.run(weather.get_forecast(None, None, day, today))
-
-
-def test_forecast_text_and_no_warning_in_calm_weather(monkeypatch):
-    f = forecast(monkeypatch, payload())
-    text = weather.forecast_text(f)
-    assert "переменная облачность" in text and "от 2° до 11°C" in text and "⚠️" not in text
-
-
-def test_forecast_warns_on_wind_rain_and_thunder(monkeypatch):
-    f = forecast(monkeypatch, payload(code=95, wind=14.0, precip=9.0))
-    notes = weather.risk_notes(f)
-    assert len(notes) == 3
-    assert "Уточните у организатора" in weather.forecast_text(f)
-
-
-def test_forecast_errors_are_user_friendly(monkeypatch):
-    with pytest.raises(weather.ForecastError, match="появится"):
-        forecast(monkeypatch, payload(), day=date(2026, 11, 20))
-    with pytest.raises(weather.ForecastError, match="прошёл"):
-        forecast(monkeypatch, payload(), day=date(2026, 10, 1))
-
-    async def broken(url, params):
-        raise OSError("нет сети")
-    monkeypatch.setattr(weather, "fetch_json", broken)
-    with pytest.raises(weather.ForecastError, match="недоступен"):
-        asyncio.run(weather.get_forecast(None, None, date(2026, 10, 24), date(2026, 10, 23)))
-
-
-def test_forecast_missing_date_in_response(monkeypatch):
-    with pytest.raises(weather.ForecastError):
-        forecast(monkeypatch, payload(day="2026-10-25"))
-
-
-# ---------- данные сайта ----------
 
 def test_hikes_and_school_json_are_valid():
     data = BASE_DIR / "site" / "data"

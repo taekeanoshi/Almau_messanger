@@ -1,10 +1,5 @@
-"""HTTP API для сайта: отдаёт клубы/ивенты из бэкенда и принимает заявки с формы.
-
-Эту фабрику использует два разных запуска:
-- bot/api_server.py — отдельный процесс, только веб-API, без Telegram (обычный случай,
-  когда бота хостит кто-то другой);
-- bot/main.py — бот и API в одном процессе, если удобнее держать всё вместе.
-"""
+"""HTTP API сайта Pople: аккаунты, чаты, учёба, клубы, походы и админка.
+Запуск — bot/api_server.py."""
 import asyncio
 import dataclasses
 import hmac
@@ -12,7 +7,6 @@ import logging
 import secrets
 from datetime import datetime
 
-from aiogram import Bot
 from aiohttp import web
 
 from bot.academics import register_routes as register_academics_routes
@@ -104,9 +98,7 @@ def _event_payload(content: Content, db: Database, event_id: str) -> dict | None
 
 
 async def health(request: web.Request) -> web.Response:
-    """mode показывает, что запущено на этом домене: api-only (без бота) или bot+api."""
-    bot: Bot | None = request.app.get("bot")
-    return web.json_response({"status": "ok", "mode": "bot+api" if bot else "api-only"})
+    return web.json_response({"status": "ok"})
 
 
 async def get_clubs(request: web.Request) -> web.Response:
@@ -316,22 +308,6 @@ async def post_event_going(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "going": going, "count": db.going_count(event_id)})
 
 
-async def _notify_admins_of_lead(app: web.Application, name: str, contact: str,
-                                  message: str, event_id: str | None) -> None:
-    bot: Bot | None = app.get("bot")
-    admin_ids = app.get("admin_ids") or ()
-    if bot is None:
-        return
-    extra = f"\nИвент: {event_id}" if event_id else ""
-    quote = f"\n«{message}»" if message else ""
-    text = f"📝 Новая заявка с сайта\n{name} · {contact}{extra}{quote}"
-    for admin_id in admin_ids:
-        try:
-            await bot.send_message(admin_id, text)
-        except Exception:  # админ мог не запускать бота — приём заявки не должен из-за этого падать
-            logger.warning("Не удалось уведомить админа %s о заявке", admin_id)
-
-
 async def post_lead(request: web.Request) -> web.Response:
     enforce(request, f"leads-ip:{client_ip(request)}", *LEADS_PER_IP)
     db: Database = request.app["db"]
@@ -350,7 +326,6 @@ async def post_lead(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="name and contact are required")
 
     lead_id = db.add_lead(name, contact, message, event_id)
-    await _notify_admins_of_lead(request.app, name, contact, message, event_id)
     return web.json_response({"ok": True, "id": lead_id}, status=201)
 
 
@@ -428,15 +403,12 @@ async def _stop_cleanup(app: web.Application) -> None:
         task.cancel()
 
 
-def build_app(db: Database, content: Content, bot: Bot | None = None,
-              admin_ids: frozenset[int] = frozenset(), cors_origin: str = "*",
+def build_app(db: Database, content: Content, cors_origin: str = "*",
               admin_token: str = "", brevo_api_key: str = "", brevo_sender_email: str = "",
               brevo_sender_name: str = "Pople", reports_to_ban: int = DEFAULT_REPORTS_TO_BAN) -> web.Application:
     app = web.Application(middlewares=[_cors_middleware(cors_origin)], client_max_size=CLIENT_MAX_SIZE)
     app["db"] = db
     app["content"] = content
-    app["bot"] = bot
-    app["admin_ids"] = admin_ids
     app["admin_token"] = admin_token
     app["limiter"] = RateLimiter()
     app.on_startup.append(_start_cleanup)

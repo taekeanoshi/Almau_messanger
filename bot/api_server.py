@@ -1,8 +1,4 @@
-"""Отдельная точка входа: запускает только веб-API, без Telegram-бота.
-
-Используется, когда бота хостит кто-то другой из команды — этому процессу не нужен
-BOT_TOKEN, он не стучится в Telegram и не зависит от того, где и как задеплоен бот.
-У него своя БД (заявки с сайта и отметки «Иду» через веб-кнопку).
+"""Точка входа сервера Pople: запускает веб-API сайта.
 
 Запуск: python -m bot.api_server
 """
@@ -39,7 +35,7 @@ async def main() -> None:
     db, content = Database(db_path), Content(data_dir)
     db.hikes.seed(content.hikes_seed)
     seed_demo_people(db)
-    app = build_app(db, content, bot=None, admin_ids=frozenset(), cors_origin=cors_origin,
+    app = build_app(db, content, cors_origin=cors_origin,
                      admin_token=admin_token, brevo_api_key=brevo_api_key,
                      brevo_sender_email=brevo_sender_email, brevo_sender_name=brevo_sender_name,
                      reports_to_ban=reports_to_ban)
@@ -50,7 +46,7 @@ async def main() -> None:
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=port)
     await site.start()
-    logger.info("API слушает на порту %s (без Telegram-бота)", port)
+    logger.info("API слушает на порту %s", port)
     if not admin_token:
         logger.warning("ADMIN_TOKEN не задан — эндпоинты /api/admin/* с серверным токеном недоступны")
     if cors_origin == "*":

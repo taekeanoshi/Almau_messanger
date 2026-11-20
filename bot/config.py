@@ -1,6 +1,5 @@
-"""Настройки бота. Читаются из переменных окружения или файла .env в корне проекта."""
+"""Общие настройки: корень проекта и чтение файла .env."""
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -16,45 +15,3 @@ def _load_dotenv(path: Path) -> None:
             continue
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip('"'))
-
-
-@dataclass(frozen=True)
-class Config:
-    token: str
-    admin_ids: frozenset[int]
-    db_path: Path
-    data_dir: Path
-    bot_username: str
-    reports_to_ban: int
-    port: int = 8080
-    cors_origin: str = "*"
-    admin_token: str = ""
-    club_admin_ids: frozenset[int] = frozenset()   # организаторы партнёрского клуба (Summit Seekers)
-    telegram_api_url: str = ""                      # свой Bot API сервер или заглушка в тестах; обычно пусто
-    brevo_api_key: str = ""                          # код входа по почте шлётся через Brevo; пусто — код только в логах
-    brevo_sender_email: str = ""                     # подтверждённый отправитель в Brevo
-    brevo_sender_name: str = "Pople"
-
-
-def load_config() -> Config:
-    _load_dotenv(BASE_DIR / ".env")
-    token = os.getenv("BOT_TOKEN", "")
-    if not token:
-        raise RuntimeError("Не задан BOT_TOKEN. Скопируйте .env.example в .env и вставьте токен от @BotFather.")
-    admins = frozenset(int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x)
-    return Config(
-        token=token,
-        admin_ids=admins,
-        db_path=Path(os.getenv("DB_PATH", BASE_DIR / "almau.db")),
-        data_dir=Path(os.getenv("DATA_DIR", BASE_DIR / "site" / "data")),
-        bot_username=os.getenv("BOT_USERNAME", "Almau_mes_bot"),
-        reports_to_ban=int(os.getenv("REPORTS_TO_BAN", "3")),
-        port=int(os.getenv("PORT", "8080")),
-        cors_origin=os.getenv("CORS_ORIGIN", "*"),
-        admin_token=os.getenv("ADMIN_TOKEN", ""),
-        club_admin_ids=frozenset(int(x) for x in os.getenv("CLUB_ADMIN_IDS", "").replace(" ", "").split(",") if x),
-        telegram_api_url=os.getenv("TELEGRAM_API_URL", ""),
-        brevo_api_key=os.getenv("BREVO_API_KEY", ""),
-        brevo_sender_email=os.getenv("BREVO_SENDER_EMAIL", ""),
-        brevo_sender_name=os.getenv("BREVO_SENDER_NAME", "Pople"),
-    )

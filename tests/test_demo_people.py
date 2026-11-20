@@ -43,7 +43,7 @@ def test_demo_accounts_are_labelled_hidden_from_public_stats_and_removable_by_ad
     async def go():
         db = Database(":memory:")
         seed_demo_people(db)
-        app = build_app(db, Content(BASE_DIR / "site" / "data"), bot=None, admin_token="tok")
+        app = build_app(db, Content(BASE_DIR / "site" / "data"), admin_token="tok")
         async with TestClient(TestServer(app)) as client:
             async def register(n, email):
                 resp = await client.post("/api/chat/register", json={

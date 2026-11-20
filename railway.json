@@ -1,7 +1,7 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "deploy": {
-    "startCommand": "python -m bot.main",
+    "startCommand": "python -m bot.api_server",
     "restartPolicyType": "ON_FAILURE",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 100

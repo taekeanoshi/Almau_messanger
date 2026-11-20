@@ -13,7 +13,7 @@ from bot.db import Database
 def make_client():
     db = Database(":memory:")
     content = Content(BASE_DIR / "site" / "data")
-    app = build_app(db, content, bot=None, admin_ids=frozenset())
+    app = build_app(db, content)
     return TestClient(TestServer(app)), db
 
 
