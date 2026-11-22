@@ -17,7 +17,7 @@ function renderPeopleResults(users, query) {
   }
   box.innerHTML = users.map(u => `<div class="people-row"><span class="row" style="flex-wrap:nowrap;min-width:0">
       <span class="avatar">${esc(initials(u))}</span>
-      <span class="grow"><b>${esc(fullName(u))}</b><small>${esc(personSub(u))}</small></span></span>
+      <span class="grow"><b>${esc(fullName(u))}</b> ${seenBadge(u.last_seen_at)}<small>${esc(personSub(u))}</small></span></span>
     <button type="button" class="btn sm" data-start-direct="${u.id}">Написать</button></div>`).join("");
 }
 

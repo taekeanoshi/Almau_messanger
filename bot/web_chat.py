@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 import aiohttp
 from aiohttp import web
 
+from bot.curriculum import on_profile_changed
 from bot.db import Database
 from bot.ratelimit import RateLimiter, client_ip, enforce
 
@@ -255,6 +256,7 @@ def require_session(request: web.Request) -> int:
     user_id = db.web_session_user(token)
     if user_id is None:
         raise web.HTTPUnauthorized(reason="invalid session")
+    db.touch_web_user(user_id)
     return user_id
 
 
@@ -371,8 +373,9 @@ async def register(request: web.Request) -> web.Response:
         raise web.HTTPConflict(reason="phone or email already registered")
 
     password_hash, salt = _hash_password(password)
-    db.create_web_user(first_name, last_name, phone, email, password_hash, salt, gender,
-                        course, specialty, nickname, role=role)
+    new_id = db.create_web_user(first_name, last_name, phone, email, password_hash, salt, gender,
+                                course, specialty, nickname, role=role)
+    on_profile_changed(db, new_id)  # сразу расписание по специальности и курсу; оценок у новых нет
     await _issue_code(request, email, "verify")
     return web.json_response({"ok": True, "email": email}, status=201)
 
@@ -515,6 +518,8 @@ async def update_profile(request: web.Request) -> web.Response:
 
     db: Database = request.app["db"]
     db.update_web_profile(user_id, fields)
+    if "course" in fields or "specialty" in fields:
+        on_profile_changed(db, user_id)  # расписание по новой специальности/курсу
     return web.json_response({"ok": True, "user": _user_payload(db.get_web_user(user_id))})
 
 
@@ -804,7 +809,7 @@ async def list_blocks(request: web.Request) -> web.Response:
 # обычный поиск по имени/фамилии среди зарегистрированных и постоянный (не одноразовый,
 # как в подборе по полу) диалог с конкретным человеком, по одному диалогу на пару.
 
-SEARCH_LIMIT = 300
+SEARCH_LIMIT = 1000
 ROLE_LABELS = {"teacher": "Преподаватель", "registrar": "Отдел расписания", "admin": "Администратор"}
 
 
@@ -814,7 +819,7 @@ def _public_user(row) -> dict:
     return {
         "id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"],
         "course": row["course"], "specialty": row["specialty"],
-        "role_label": ROLE_LABELS.get(row["role"], ""),
+        "role_label": ROLE_LABELS.get(row["role"], ""), "last_seen_at": row["last_seen_at"],
     }
 
 

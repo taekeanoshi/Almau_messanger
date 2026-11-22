@@ -2,14 +2,14 @@ from bot.db import Database
 from bot.demo_people import DEMO_PEOPLE, seed_demo_people
 
 
-def test_seed_adds_150_people_once(tmp_path):
+def test_seed_adds_350_people_once(tmp_path):
     db = Database(tmp_path / "t.db")
     assert len(DEMO_PEOPLE) == 10
-    assert seed_demo_people(db) == 150
+    assert seed_demo_people(db) == 350
     assert seed_demo_people(db) == 0  # повторный старт сервиса не плодит дублей
     rows = db.search_web_users("", exclude_id=0, limit=500)
-    assert len(rows) == 150
-    assert len({(r["first_name"], r["last_name"]) for r in rows}) == 150  # все имена разные
+    assert len(rows) == 350
+    assert len({(r["first_name"], r["last_name"]) for r in rows}) == 350  # все имена разные
     assert all(r["is_demo"] == 1 for r in rows)
     assert all(r["email_verified"] == 1 and r["role"] == "student" for r in rows)
     # казахские буквы ищутся без учёта регистра
@@ -59,21 +59,21 @@ def test_demo_accounts_are_labelled_hidden_from_public_stats_and_removable_by_ad
                               json={"email": "boss@example.org", "role": "admin"})
             h = {"Authorization": f"Bearer {student['token']}"}
 
-            # Все 150 демо-людей видны в поиске, и по ответу не отличить их от остальных
+            # Все 350 демо-людей видны в поиске, и по ответу не отличить их от остальных
             resp = await client.get("/api/chat/direct/search-users", headers=h)
             users = (await resp.json())["users"]
-            assert len(users) == 151 and all("demo" not in u for u in users)
+            assert len(users) == 351 and all("demo" not in u for u in users)
 
             # В публичной статистике и в цифрах админки они не считаются настоящими
             assert (await (await client.get("/api/stats")).json())["users"] == 2
             ah = {"Authorization": f"Bearer {boss['token']}"}
             overview = await (await client.get("/api/admin/overview", headers=ah)).json()
-            assert overview["demo_users"] == 150 and overview["users"] == 2
+            assert overview["demo_users"] == 350 and overview["users"] == 2
 
             # Студент не управляет демо-данными; админ удаляет их одной кнопкой
             assert (await client.post("/api/admin/demo-users/delete", headers=h)).status == 403
             resp = await client.post("/api/admin/demo-users/delete", headers=ah)
-            assert (await resp.json())["removed"] == 150
+            assert (await resp.json())["removed"] == 350
             resp = await client.get("/api/chat/direct/search-users", headers=h)
             assert len((await resp.json())["users"]) == 1
 

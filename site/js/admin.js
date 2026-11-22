@@ -125,7 +125,7 @@ async function renderAdminDemo() {
     <p style="margin:0">Демо-аккаунты нужны, чтобы в разделе «Люди» было с кем познакомиться, пока платформа пустая. В «Людях» они выглядят как обычные аккаунты, войти под ними нельзя, в публичную статистику (цифры на главной) они не входят. Пользователям их не отличить, поэтому удалите их, когда придут настоящие студенты.</p>
     <p style="margin:0"><b>Сейчас демо-аккаунтов: ${count}</b></p>
     <div class="actions">
-      <button type="button" class="btn" data-admin-demo="seed">Создать 150 демо-людей</button>
+      <button type="button" class="btn" data-admin-demo="seed">Создать 350 демо-студентов</button>
       <button type="button" class="btn danger" data-admin-demo="delete">Удалить всех демо</button>
     </div>
     <p class="muted small" style="margin:0">Нажмите «Удалить всех демо» перед тем, как открыть платформу настоящим студентам.</p></div>`;
@@ -192,7 +192,7 @@ function initAdmin() {
       const action = demoBtn.dataset.adminDemo;
       if (action === "delete" && !await askConfirm("Все демо-аккаунты исчезнут из раздела «Люди». Настоящие пользователи не пострадают.", {title: "Удалить демо-людей?", ok: "Удалить", danger: true})) return;
       try {
-        const r = await api(`/api/admin/demo-users/${action}`, {method: "POST", body: action === "seed" ? {count: 150} : {}});
+        const r = await api(`/api/admin/demo-users/${action}`, {method: "POST", body: action === "seed" ? {count: 350} : {}});
         toast(action === "seed" ? `Создано демо-людей: ${r.added}.` : `Удалено демо-людей: ${r.removed}.`, "ok");
         loadAdminOverview();
         renderAdminDemo();

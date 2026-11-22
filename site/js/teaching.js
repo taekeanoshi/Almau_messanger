@@ -18,6 +18,7 @@ async function renderTeachingTab(box) {
   try {
     const data = await api("/api/academics/teaching");
     teachCaps = data;
+    data.courses.sort((a, b) => (a.description === CATALOG_NOTE) - (b.description === CATALOG_NOTE));  // свои дисциплины платформы — первыми
     if (data.can_assign_teachers) teachTeachers = (await api("/api/academics/teachers")).teachers;
     const createForm = data.can_grade ? `<details class="course"><summary><span><b>➕ Новая дисциплина</b></span></summary><div class="body">
       <form class="form" data-form="create-course">
@@ -99,18 +100,18 @@ function rosterSection(course, roster, schedule, grades) {
       <div style="margin-top:8px">${mine.length ? mine.map(g => `<span class="grade-pill" title="${esc(g.comment || "")}">${esc(g.label)}: ${g.score}/${g.max_score}</span>`).join("")
         : `<span class="muted small">Оценок нет</span>`}</div>
       <form class="mini-form" data-form="set-grade">
-        <input name="label" placeholder="РК1" maxlength="40" required style="width:100px" list="grade-labels">
+        <input name="label" placeholder="ТК1" maxlength="40" required style="width:100px" list="grade-labels">
         <input name="score" type="number" step="0.1" min="0" placeholder="Балл" required>
         <input name="max_score" type="number" step="0.1" min="1" value="100" aria-label="Максимум">
         <input name="comment" placeholder="Комментарий" maxlength="500">
         <button class="btn sm" type="submit">Поставить</button></form>` : "";
     return `<div class="item" data-student="${s.id}"><div class="row between">
-        <span><b>${esc(fullName(s))}</b><br><small class="muted">${esc([courseLabel(s.course), s.specialty].filter(Boolean).join(" · "))}</small></span>
+        <span><b>${esc(fullName(s))}</b> ${seenBadge(s.last_seen_at)}<br><small class="muted">${esc([courseLabel(s.course), s.specialty].filter(Boolean).join(" · "))}</small></span>
         <span class="row">${slotSelect}<button type="button" class="btn ghost sm" data-act="write-teacher" data-id="${s.id}">✉️</button></span></div>${journal}</div>`;
   }).join("") : `<p class="muted small" style="margin:0">Пока никто не записался.</p>`;
   return `<div class="sect">${sub(`Студенты · ${roster.length}`)}${rows}
-    <datalist id="grade-labels"><option value="РК1"><option value="РК2"><option value="Экзамен"><option value="Итог"></datalist>
-    ${teachCaps.can_grade && roster.length ? `<p class="muted small" style="margin:8px 0 0">Оценка с тем же названием (например, «РК1») заменяет прежнюю.</p>` : ""}</div>`;
+    <datalist id="grade-labels"><option value="ТК1"><option value="РК1"><option value="ТК2"><option value="РК2"><option value="Сессия"></datalist>
+    ${teachCaps.can_grade && roster.length ? `<p class="muted small" style="margin:8px 0 0">ТК — средний текущий, РК — рубежный контроль. Оценка с тем же названием заменяет прежнюю. Итог = (РК1 + РК2) / 2 × 60% + Сессия × 40%.</p>` : ""}</div>`;
 }
 
 // ---------- задания ----------

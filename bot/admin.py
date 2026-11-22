@@ -9,6 +9,7 @@ import secrets
 from aiohttp import web
 
 from bot.db import Database
+from bot.curriculum import spread_demo_activity, sync_all
 from bot.demo_people import seed_demo_people
 from bot.web_chat import _hash_invite_key, read_json_body, require_session
 
@@ -175,6 +176,8 @@ async def demo_users_seed(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="count must be an integer")
     db: Database = request.app["db"]
     added = seed_demo_people(db, max(1, min(count, 500)))
+    sync_all(db)
+    spread_demo_activity(db)
     return web.json_response({"ok": True, "added": added, "count": db.count_demo_users()})
 
 

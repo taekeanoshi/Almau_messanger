@@ -11,6 +11,7 @@ function fillProfileForm() {
   $("profile-role").textContent = ROLE_NAMES[chatUser.role] || chatUser.role;
   // Курс, специальность и анонимный ник нужны только тем, кому доступен анонимный чат
   $("profile-student-fields").hidden = !isStudentLike();
+  fillSpecialtySelect(form, chatUser.specialty || "");
 }
 
 async function loadBlocks() {
@@ -34,6 +35,7 @@ function enterProfile() {
 
 function initProfile() {
   definePage("profile", {auth: true, enter: enterProfile});
+  bindSpecialtySelect($("profile-form"));
 
   $("profile-form").addEventListener("submit", async e => {
     e.preventDefault();

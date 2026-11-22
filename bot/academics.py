@@ -53,6 +53,7 @@ from urllib.parse import quote
 
 from aiohttp import web
 
+from bot.curriculum import get_curriculum
 from bot.db import AttendanceLocked, Database
 from bot.web_chat import read_json_body, require_session, sniff_image_type
 
@@ -447,7 +448,7 @@ async def course_roster(request: web.Request) -> web.Response:
     students = [
         {"id": s["id"], "first_name": s["first_name"], "last_name": s["last_name"],
          "course": s["course"], "specialty": s["specialty"],
-         "schedule_item_id": s["enrollment_schedule_item_id"]}
+         "schedule_item_id": s["enrollment_schedule_item_id"], "last_seen_at": s["last_seen_at"]}
         for s in db.roster(course_id)
     ]
     return web.json_response({"students": students})
@@ -1382,7 +1383,13 @@ async def reset_exam_attempt(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def specialties(request: web.Request) -> web.Response:
+    """Курсы и специальности из учебного плана — для формы регистрации, без входа."""
+    return web.json_response(get_curriculum().options())
+
+
 def register_routes(app: web.Application) -> None:
+    app.router.add_get("/api/academics/specialties", specialties)
     app.router.add_get("/api/academics/courses", list_courses)
     app.router.add_get("/api/academics/my-courses", my_courses)
     app.router.add_post("/api/academics/enroll", enroll)

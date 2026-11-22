@@ -13,6 +13,7 @@ from bot.api import build_app
 from bot.config import BASE_DIR, _load_dotenv
 from bot.content import Content
 from bot.db import Database
+from bot.curriculum import spread_demo_activity, sync_all
 from bot.demo_people import seed_demo_people
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,8 @@ async def main() -> None:
     db, content = Database(db_path), Content(data_dir)
     db.hikes.seed(content.hikes_seed)
     seed_demo_people(db)
+    sync_all(db)                 # каталог дисциплин AlmaU, записи студентов, текущие оценки демо-студентов
+    spread_demo_activity(db)     # «был(а) в сети» у демо-аккаунтов — в пределах последних трёх суток
     app = build_app(db, content, cors_origin=cors_origin,
                      admin_token=admin_token, brevo_api_key=brevo_api_key,
                      brevo_sender_email=brevo_sender_email, brevo_sender_name=brevo_sender_name,
@@ -52,7 +55,12 @@ async def main() -> None:
     if cors_origin == "*":
         logger.warning("CORS_ORIGIN=* — API принимает запросы с любых сайтов. "
                        "Укажите домен сайта (например https://almau-messenger.vercel.app)")
-    await asyncio.Event().wait()
+    while True:                  # кто-то из демо-студентов всегда «в сети»
+        await asyncio.sleep(180)
+        try:
+            spread_demo_activity(db, share=0.04, within_minutes=3)
+        except Exception:
+            logger.exception("Не получилось обновить активность демо-аккаунтов")
 
 
 if __name__ == "__main__":

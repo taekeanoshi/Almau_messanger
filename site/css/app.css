@@ -397,3 +397,25 @@ details.course select,.att-row select{background:#0b0b0f;border:1px solid var(--
 .partner-tile h3{font-size:20px;margin:8px 0 6px}.partner-tile p{margin:0;color:var(--mute);font-size:15px}
 .partner-tile .actions{margin-top:auto}
 .pill.demo{color:var(--mute);border-style:dashed}
+
+/* ведомость оценок */
+.gradebook-wrap{overflow-x:auto;margin-top:14px;-webkit-overflow-scrolling:touch}
+.gradebook{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+.gradebook th,.gradebook td{padding:10px 8px;border-top:1px solid var(--line);text-align:center;vertical-align:middle}
+.gradebook thead th{border-top:none;color:var(--mute);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.gradebook th[scope=row],.gradebook thead th:first-child{text-align:left;font-weight:400;min-width:220px}
+.gradebook th[scope=row] small{display:block;color:var(--mute);font-size:12px;margin-top:2px}
+.gradebook th[scope=row] .extra{display:block;margin-top:4px}
+.gradebook td{font-family:Unbounded,system-ui,sans-serif;font-size:13px;white-space:nowrap}
+.gradebook td small{color:var(--mute);font-size:11px}
+.gradebook td.ok{color:var(--ok)}
+.gradebook td.warn{color:var(--warn)}
+.gradebook td.bad{color:var(--bad)}
+.gradebook td.na{color:var(--mute)}
+.gradebook td.total{font-weight:600}
+.gradebook tbody tr:hover{background:rgba(255,255,255,.03)}
+/* «в сети» / «был(а) … назад» */
+.seen{font-size:11px;color:var(--mute);font-weight:400;white-space:nowrap}
+.seen.on{color:var(--ok)}
+.seen.on::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;vertical-align:1px}
+.course-card[hidden]{display:none}

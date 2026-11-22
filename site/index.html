@@ -480,11 +480,12 @@
       <label class="pw"><input name="password" type="password" placeholder="Пароль (минимум 8 символов)" required minlength="8" maxlength="200" autocomplete="new-password">
        <button type="button" data-toggle-password>Показать</button></label>
       <div id="register-student-fields" class="stack">
-       <select name="course" aria-label="Курс">
+       <select name="course" aria-label="Курс" data-course-select>
         <option value="">Курс…</option><option value="1">1 курс</option><option value="2">2 курс</option>
-        <option value="3">3 курс</option><option value="4">4 курс</option><option value="Магистратура">Магистратура</option>
+        <option value="3">3 курс</option><option value="4">4 курс</option>
        </select>
-       <input name="specialty" placeholder="Специальность" maxlength="120">
+       <select name="specialty" aria-label="Специальность" data-specialty-select><option value="">Сначала выбери курс</option></select>
+       <p class="hint">Расписание твоей специальности появится сразу после входа.</p>
        <input name="nickname" placeholder="Ник для анонимного чата (необязательно)" maxlength="40">
        <div class="gender-pick">
         <label><input type="radio" name="gender" value="male"> Парень</label>
@@ -630,8 +631,11 @@
      <div class="cols"><label>Имя<input name="first_name" required maxlength="80" autocomplete="given-name"></label>
       <label>Фамилия<input name="last_name" required maxlength="80" autocomplete="family-name"></label></div>
      <div id="profile-student-fields" class="stack">
-      <div class="cols"><label>Курс<input name="course" maxlength="120"></label>
-       <label>Специальность<input name="specialty" maxlength="120"></label></div>
+      <div class="cols"><label>Курс<select name="course" data-course-select>
+        <option value="">—</option><option value="1">1 курс</option><option value="2">2 курс</option>
+        <option value="3">3 курс</option><option value="4">4 курс</option></select></label>
+       <label>Специальность<select name="specialty" data-specialty-select><option value="">—</option></select></label></div>
+      <p class="hint">При смене курса или специальности расписание пересоберётся под новый учебный план.</p>
       <label>Ник в анонимном чате<input name="nickname" maxlength="40"></label>
      </div>
      <p class="hint">Почта: <b id="profile-email"></b> · Телефон: <b id="profile-phone"></b><br>Их видишь только ты и администратор.</p>

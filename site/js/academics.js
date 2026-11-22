@@ -4,6 +4,7 @@
 // прохождение экзамена — js/exam.js.
 
 const SCHEDULE_KINDS = ["лекция", "практика", "лаб", "семинар"];
+const CATALOG_NOTE = "Дисциплина из расписания AlmaU, осенний семестр 2026-2027.";  // = bot/curriculum.py CATALOG_MARK
 let acadTab = null;
 
 const acadEmpty = text => `<div class="empty">${text}</div>`;
@@ -49,22 +50,66 @@ function attendanceBlock(stats) {
     <p class="muted small" style="margin:0">Шкала заполняется к 30% пропусков — после этого автоматический ретейк.</p></div>`;
 }
 
+// Ведомость: ТК1 (средний текущий 1), РК1, ТК2, РК2, Сессия. Итог = (РК1 + РК2) / 2 × 0,6 + Сессия × 0,4 —
+// считается, только когда есть обе рубежки и сессия.
+const GRADE_COLUMNS = [["ТК1", "Средний текущий 1"], ["РК1", "Рубежный контроль 1"], ["ТК2", "Средний текущий 2"],
+  ["РК2", "Рубежный контроль 2"], ["Сессия", "Экзамен в сессию"]];
+const round1 = x => Math.round(x * 10) / 10;
+const scoreClass = pct => pct >= 90 ? "ok" : pct >= 70 ? "" : pct >= 50 ? "warn" : "bad";
+function finalGrade(byLabel) {
+  const [rk1, rk2, exam] = ["РК1", "РК2", "Сессия"].map(l => byLabel[l]);
+  if (!rk1 || !rk2 || !exam) return null;
+  const pct = g => g.score / g.max_score * 100;
+  return round1((pct(rk1) + pct(rk2)) / 2 * 0.6 + pct(exam) * 0.4);
+}
+function gradeCell(g) {
+  if (!g) return `<td class="na">—</td>`;
+  const pct = g.score / g.max_score * 100;
+  return `<td class="${scoreClass(pct)}" title="${esc(g.comment || "")}">${round1(g.score)}${g.max_score !== 100 ? `<small>/${g.max_score}</small>` : ""}</td>`;
+}
+const avgOf = list => list.length ? round1(list.reduce((a, x) => a + x, 0) / list.length) : null;
+
 async function renderGradesTab(box) {
   try {
-    const [{grades}, {courses}] = await Promise.all([api("/api/academics/grades"), api("/api/academics/my-courses")]);
+    const [{grades}, {courses}, {schedule}] = await Promise.all([api("/api/academics/grades"),
+      api("/api/academics/my-courses"), api("/api/academics/schedule")]);
     if (!courses.length) { box.innerHTML = acadEmpty("Оценки появятся, когда запишешься на дисциплины."); return; }
     const stats = await Promise.all(courses.map(c => api(`/api/academics/attendance?course_id=${c.id}`).then(r => r.stats)
       .catch(() => ({total: 0, absent: 0, ratio: 0, on_retake: false}))));
-    box.innerHTML = courses.map((c, idx) => {
+    const teacherOf = Object.fromEntries(schedule.filter(i => i.teacher_name).map(i => [i.course_id, i.teacher_name]));
+    const known = new Set(GRADE_COLUMNS.map(c => c[0]));
+    const pctList = label => grades.filter(g => g.label === label).map(g => g.score / g.max_score * 100);
+    const tk = avgOf([...pctList("ТК1"), ...pctList("ТК2")]), rk1 = avgOf(pctList("РК1"));
+
+    const rows = courses.map(c => {
       const mine = grades.filter(g => g.course_id === c.id);
-      const sum = mine.reduce((a, g) => a + g.score, 0), max = mine.reduce((a, g) => a + g.max_score, 0);
-      const rows = mine.length ? mine.map(g => `<div class="line"><span>${esc(g.label)}${g.comment ? `<small>${esc(g.comment)}</small>` : ""}</span>
-        <b>${g.score}<span class="muted"> / ${g.max_score}</span></b></div>`).join("")
-        : `<p class="muted small" style="margin:0">Оценок пока нет.</p>`;
-      return `<div class="card" style="margin-bottom:10px"><h3>${esc(c.code)} · ${esc(c.title)}
-        ${max ? `<span class="pill acc">в сумме ${Math.round(sum * 10) / 10} из ${max} · ${Math.round(sum / max * 100)}%</span>` : ""}</h3>
-        ${rows}${attendanceBlock(stats[idx])}</div>`;
+      const byLabel = Object.fromEntries(mine.map(g => [g.label, g]));
+      const other = mine.filter(g => !known.has(g.label));
+      const total = finalGrade(byLabel);
+      return `<tr><th scope="row"><b>${esc(c.title)}</b>
+          <small>${esc(teacherOf[c.id] || c.teacher_name || "преподаватель не назначен")} · ${esc(c.code)}</small>
+          ${other.length ? `<span class="extra">${other.map(g => `<span class="grade-pill">${esc(g.label)}: ${round1(g.score)}/${g.max_score}</span>`).join("")}</span>` : ""}</th>
+        ${GRADE_COLUMNS.map(([label]) => gradeCell(byLabel[label])).join("")}
+        <td class="total ${total == null ? "na" : scoreClass(total)}">${total == null ? "—" : total}</td></tr>`;
     }).join("");
+
+    const attendance = courses.map((c, idx) => stats[idx].total
+      ? `<div class="card" style="margin-bottom:10px"><h3>${esc(c.title)}</h3>${attendanceBlock(stats[idx])}</div>` : "").join("");
+
+    box.innerHTML = `<div class="card gradebook-card">
+        <div class="row between" style="flex-wrap:wrap;gap:10px">
+          <h3 style="margin:0">Успеваемость · осенний семестр 2026–2027</h3>
+          <span class="row" style="gap:6px;flex-wrap:wrap">
+            <span class="pill">дисциплин: ${courses.length}</span>
+            ${tk != null ? `<span class="pill acc">средний текущий: ${tk}</span>` : ""}
+            ${rk1 != null ? `<span class="pill acc">средний РК1: ${rk1}</span>` : ""}</span></div>
+        <div class="gradebook-wrap"><table class="gradebook">
+          <thead><tr><th scope="col">Дисциплина и преподаватель</th>
+            ${GRADE_COLUMNS.map(([l, t]) => `<th scope="col" title="${t}">${l}</th>`).join("")}<th scope="col" title="Итоговая оценка">Итог</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <p class="muted small" style="margin:10px 0 0">ТК — средний балл текущего контроля, РК — рубежный контроль.
+          Итог = (РК1 + РК2) / 2 × 60% + Сессия × 40%. Он появится после второй рубежки и сессии.</p></div>
+      ${attendance ? `<h3 style="margin:18px 0 10px">Посещаемость</h3>${attendance}` : ""}`;
   } catch (err) { box.innerHTML = acadError(err, "Не получилось загрузить оценки."); }
 }
 
@@ -189,12 +234,19 @@ async function renderCatalogTab(box) {
   try {
     const [{courses}, {courses: mine}] = await Promise.all([api("/api/academics/courses"), api("/api/academics/my-courses")]);
     const myIds = new Set(mine.map(c => c.id));
-    box.innerHTML = courses.length ? courses.map(c => `<div class="course-card" data-course="${c.id}">
+    // Сначала дисциплины, созданные преподавателями на платформе, потом каталог из расписания вуза.
+    courses.sort((a, b) => (a.description === CATALOG_NOTE) - (b.description === CATALOG_NOTE));
+    box.innerHTML = courses.length ? `<input class="input" type="search" data-catalog-filter placeholder="Найти дисциплину или преподавателя"
+        aria-label="Поиск по каталогу" style="margin-bottom:12px">` + courses.map(c => `<div class="course-card" data-course="${c.id}" data-search="${esc(`${c.code} ${c.title} ${c.teacher_name || ""}`.toLowerCase())}">
       <div class="row between"><h4>${esc(c.code)} · ${esc(c.title)}</h4>${myIds.has(c.id) ? `<span class="pill ok">ты записан(а)</span>` : ""}</div>
       <p class="meta">${c.teacher_name ? `Преподаватель: ${esc(c.teacher_name)}` : "Преподаватель не назначен"}</p>
-      ${c.description ? `<p class="meta">${esc(c.description)}</p>` : ""}
+      ${c.description && c.description !== CATALOG_NOTE ? `<p class="meta">${esc(c.description)}</p>` : ""}
       <div class="actions" data-enroll-box>${myIds.has(c.id) ? "" : `<button type="button" class="btn sm" data-act="enroll">Записаться</button>`}</div></div>`).join("")
       : acadEmpty("Дисциплин пока нет — их создают преподаватели.");
+    box.querySelector("[data-catalog-filter]")?.addEventListener("input", e => {
+      const q = e.target.value.trim().toLowerCase();
+      box.querySelectorAll(".course-card").forEach(card => { card.hidden = q !== "" && !card.dataset.search.includes(q); });
+    });
   } catch (err) { box.innerHTML = acadError(err, "Не получилось загрузить каталог."); }
 }
 

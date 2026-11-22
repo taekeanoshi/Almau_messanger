@@ -120,10 +120,11 @@ function initRegister() {
   let pendingEmail = null;
 
   updateRegisterFields(form);
+  bindSpecialtySelect(form);
   form.querySelectorAll('input[name="account_type"]').forEach(r => r.addEventListener("change", () => updateRegisterFields(form)));
 
   const reset = () => {
-    form.reset(); updateRegisterFields(form);
+    form.reset(); updateRegisterFields(form); fillSpecialtySelect(form, "");
     step1.hidden = false; step2.hidden = true; pendingEmail = null; status.textContent = "";
   };
 

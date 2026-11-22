@@ -1,4 +1,4 @@
-"""Демо-студенты для вкладки «Люди» и прямого чата: 150 аккаунтов с казахскими именами.
+"""Демо-студенты для вкладки «Люди», прямого чата и ведомостей: 350 аккаунтов с казахскими именами.
 
 База SQLite на Railway сбрасывается при каждом деплое (см. README, «Хостинг»), поэтому
 людей не вставляем руками один раз, а досеиваем при каждом старте сервиса — как походы
@@ -8,13 +8,17 @@
 туда не уходят), телефоны фиктивные, а пароль заведомо невалидный — войти под ними
 нельзя, ни один хеш PBKDF2 не начинается с «!». Все они помечены is_demo: в «Людях» рядом с
 именем стоит значок «демо», в публичную статистику они не входят, а админ удаляет их одной
-кнопкой. Сколько создавать — SEED_DEMO_PEOPLE (по умолчанию 150, 0 — не создавать).
+кнопкой. Сколько создавать — SEED_DEMO_PEOPLE (по умолчанию 350, 0 — не создавать).
+
+Курс и специальность берутся из учебного плана AlmaU (bot/curriculum.py), поэтому у каждого
+демо-студента есть настоящее расписание своей специальности и текущие оценки.
 """
 import logging
 import os
 import random
 import secrets
 
+from bot.curriculum import get_curriculum
 from bot.db import Database
 
 logger = logging.getLogger(__name__)
@@ -34,7 +38,7 @@ DEMO_PEOPLE = [
 ]
 
 
-DEFAULT_COUNT = 150
+DEFAULT_COUNT = 350
 _MALE = ["Айдар", "Ержан", "Данияр", "Аян", "Руслан", "Тимур", "Арман", "Нурбол", "Алихан", "Бауыржан", "Мирас",
          "Нурлан", "Санжар", "Ернар", "Азамат", "Жандос", "Куат", "Расул", "Ильяс", "Алмас", "Бекжан", "Нұрбек",
          "Қанат", "Мақсат"]
@@ -49,10 +53,19 @@ _SPECIALTIES = ["Маркетинг", "Финансы", "Менеджмент", 
                 "Государственное управление"]
 
 
+def _study_plan(rng: random.Random) -> tuple[str, str]:
+    """Курс и специальность, у которых в файлах есть расписание. Без плана — старый список."""
+    plan = get_curriculum().options()["with_schedule"]
+    pairs = [(c, n) for c, names in plan.items() for n in names]
+    if not pairs:
+        return rng.choice(_COURSES), rng.choice(_SPECIALTIES)
+    return rng.choice(pairs)
+
+
 def _generated_people(total: int) -> list[tuple]:
     """Детерминированный набор: при каждом старте получаются те же люди, поэтому сид идемпотентен."""
     rng = random.Random(2026)
-    people = list(DEMO_PEOPLE[:total])
+    people = [p[:3] + _study_plan(rng) + p[5:] for p in DEMO_PEOPLE[:total]]
     seen = {(p[0], p[1]) for p in people}
     while len(people) < total:
         female = rng.random() < 0.5
@@ -61,8 +74,8 @@ def _generated_people(total: int) -> list[tuple]:
         if (first, last) in seen:
             continue
         seen.add((first, last))
-        people.append((first, last, "female" if female else "male", rng.choice(_COURSES),
-                       rng.choice(_SPECIALTIES), f"Аноним-{1000 + len(people)}"))
+        people.append((first, last, "female" if female else "male", *_study_plan(rng),
+                       f"Аноним-{1000 + len(people)}"))
     return people
 
 
@@ -80,7 +93,7 @@ def demo_count_from_env() -> int:
         value = int(raw)
     except ValueError:
         return DEFAULT_COUNT
-    return DEFAULT_COUNT if value == 1 else max(0, min(value, 500))  # «1» — старое значение «включено»
+    return DEFAULT_COUNT if value in (1, 150) else max(0, min(value, 500))  # «1»/«150» — старые значения
 
 
 def seed_demo_people(db: Database, count: int | None = None) -> int:
@@ -90,7 +103,11 @@ def seed_demo_people(db: Database, count: int | None = None) -> int:
     added = 0
     for i, (first, last, gender, course, specialty, nickname) in enumerate(_generated_people(total)):
         email = _demo_email(i)
-        if db.get_web_user_by_email(email) is not None:
+        existing = db.get_web_user_by_email(email)
+        if existing is not None:
+            # демо-студенты из прошлых версий получают курс и специальность из учебного плана
+            if existing["is_demo"] and (existing["course"], existing["specialty"]) != (course, specialty):
+                db.update_web_profile(existing["id"], {"course": course, "specialty": specialty})
             continue
         db.create_web_user(first, last, _demo_phone(i), email,
                            password_hash="!demo-" + secrets.token_hex(16), password_salt=secrets.token_hex(16),

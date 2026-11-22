@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS web_users (
     nickname      TEXT NOT NULL DEFAULT '',  -- анонимный ник, виден собеседнику вместо имени
     role          TEXT NOT NULL DEFAULT 'student',  -- 'student' | 'teacher' | 'registrar' | 'admin'
     is_demo       INTEGER NOT NULL DEFAULT 0,       -- 1 = демо-аккаунт для витрины, не настоящий человек
+    last_seen_at  TEXT,                             -- когда последний раз заходил(а), ISO UTC
     banned        INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL
 );
@@ -360,6 +361,7 @@ class Database:
                 "nickname": "ALTER TABLE web_users ADD COLUMN nickname TEXT NOT NULL DEFAULT ''",
                 "role": "ALTER TABLE web_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'",
                 "is_demo": "ALTER TABLE web_users ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0",
+                "last_seen_at": "ALTER TABLE web_users ADD COLUMN last_seen_at TEXT",
             },
             "web_messages": {
                 "kind": "ALTER TABLE web_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
@@ -590,6 +592,14 @@ class Database:
             (hash_token(token), _days_ago(SESSION_TTL_DAYS)),
         ).fetchone()
         return row["user_id"] if row else None
+
+    def touch_web_user(self, user_id: int) -> None:
+        """«Был(а) в сети»: обновляется на запросах с сессией, не чаще раза в минуту на аккаунт."""
+        now = datetime.now(timezone.utc)
+        with self.conn:
+            self.conn.execute("UPDATE web_users SET last_seen_at = ? WHERE id = ? AND "
+                              "(last_seen_at IS NULL OR last_seen_at < ?)",
+                              (now.isoformat(), user_id, (now - timedelta(minutes=1)).isoformat()))
 
     def delete_web_session(self, token: str) -> None:
         with self.conn:
@@ -1351,10 +1361,12 @@ class Database:
             self.conn.execute("UPDATE web_users SET is_demo = 1 WHERE is_demo = 0 AND email LIKE 'demo%@example.com'")
 
     def count_demo_users(self) -> int:
-        return self.conn.execute("SELECT COUNT(*) FROM web_users WHERE is_demo = 1").fetchone()[0]
+        return self.conn.execute("SELECT COUNT(*) FROM web_users WHERE is_demo = 1 AND role != 'teacher'").fetchone()[0]
 
     def delete_demo_users(self) -> int:
-        ids = [r["id"] for r in self.conn.execute("SELECT id FROM web_users WHERE is_demo = 1")]
+        """Удаляет демо-студентов. Преподаватели из расписания AlmaU (тоже is_demo — войти под
+        ними нельзя) остаются: без них у дисциплин каталога пропали бы имена ведущих."""
+        ids = [r["id"] for r in self.conn.execute("SELECT id FROM web_users WHERE is_demo = 1 AND role != 'teacher'")]
         for user_id in ids:
             self.delete_web_account(user_id)
         return len(ids)
@@ -1558,7 +1570,8 @@ class Database:
         q = lambda sql, *args: self.conn.execute(sql, args).fetchone()[0]  # noqa: E731
         return {
             "users": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 0"),
-            "demo_users": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 1"),
+            "demo_users": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 1 AND role != 'teacher'"),
+            "demo_teachers": q("SELECT COUNT(*) FROM web_users WHERE is_demo = 1 AND role = 'teacher'"),
             "students": q("SELECT COUNT(*) FROM web_users WHERE role = 'student' AND is_demo = 0"),
             "teachers": q("SELECT COUNT(*) FROM web_users WHERE role = 'teacher'"),
             "registrars": q("SELECT COUNT(*) FROM web_users WHERE role = 'registrar'"),

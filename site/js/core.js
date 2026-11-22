@@ -22,6 +22,43 @@ const ROLE_NAMES = {student: "Студент", teacher: "Преподавате�
 
 // «2 курс» для цифр, как есть — для «Магистратура» и т.п.
 const courseLabel = c => !c ? "" : /^\d+$/.test(c) ? `${c} курс` : c;
+// «Был(а) в сети»: last_seen_at в ISO UTC → «в сети» / «5 мин назад» / «3 ч назад» / «2 дн. назад».
+function seenLabel(iso) {
+  if (!iso) return "";
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (min < 5) return "в сети";
+  if (min < 60) return `был(а) ${min} мин назад`;
+  if (min < 24 * 60) return `был(а) ${Math.round(min / 60)} ч назад`;
+  return `был(а) ${Math.round(min / 1440)} дн. назад`;
+}
+const seenBadge = iso => {
+  const label = seenLabel(iso);
+  return label ? `<span class="seen ${label === "в сети" ? "on" : ""}">${label}</span>` : "";
+};
+
+// Специальности по курсам из учебного плана (расписания AlmaU) — для регистрации и профиля.
+let specialtiesCache = null;
+async function loadSpecialties() {
+  if (!specialtiesCache) specialtiesCache = api("/api/academics/specialties", {auth: false}).catch(() => { specialtiesCache = null; return {courses: {}}; });
+  return specialtiesCache;
+}
+async function fillSpecialtySelect(form, current) {
+  const course = form.querySelector("[data-course-select]")?.value || "";
+  const select = form.querySelector("[data-specialty-select]");
+  if (!select) return;
+  const keep = current !== undefined ? current : select.value;
+  if (!course) { select.innerHTML = `<option value="">Сначала выбери курс</option>`; return; }
+  const {courses = {}, with_schedule = {}} = await loadSpecialties();
+  const names = courses[course] || [];
+  const withPlan = new Set(with_schedule[course] || []);
+  const extra = keep && !names.includes(keep) ? [keep] : [];
+  select.innerHTML = `<option value="">Специальность…</option>` + [...extra, ...names].map(n =>
+    `<option value="${esc(n)}" ${n === keep ? "selected" : ""}>${esc(n)}${withPlan.has(n) || extra.includes(n) ? "" : " (расписание позже)"}</option>`).join("");
+}
+function bindSpecialtySelect(form) {
+  form.querySelector("[data-course-select]")?.addEventListener("change", () => fillSpecialtySelect(form, ""));
+}
+
 const fullName = u => `${u.first_name || ""} ${u.last_name || ""}`.trim();
 const initials = u => ((u.first_name || "?")[0] + (u.last_name || "")[0]).toUpperCase();
 
