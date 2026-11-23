@@ -123,3 +123,78 @@ def test_waitlist_promotion_notifies_next_person():
             assert resp.status == 403
 
     run(go())
+
+
+def test_reminder_rsvp_no_frees_place_for_waitlist():
+    """За сутки — напоминание с «приду / не смогу»; «не смогу» отдаёт место первому из листа ожидания."""
+    from datetime import timedelta
+    from bot.clubs import run_reminders
+    from bot.hikes import now as hikes_now
+
+    async def go():
+        client, db = make()
+        async with client:
+            org, _ = await login(client, ORGANIZER_EMAIL, DEFAULT_ORGANIZER_PASSWORD)
+            student, me = await login(client, STUDENT_EMAIL, DEFAULT_STUDENT_PASSWORD)
+            start = (hikes_now() + timedelta(hours=20)).strftime("%Y-%m-%dT%H:%M")
+            event = (await (await client.post("/api/organizer/events", headers=org, json={
+                "title": "Игра завтра", "start_at": start, "capacity": 1, "kind": "game"})).json())["event"]
+            await client.post(f"/api/hikes/{event['id']}/signup", headers=student, json={"src": "IG!"})
+            other = db.conn.execute("SELECT id FROM web_users WHERE is_demo = 1 AND role = 'student' AND id != ? LIMIT 1",
+                                    (me["id"],)).fetchone()["id"]
+            db.hikes.signup(event["id"], -other, "Другой студент", "+77010000000")      # в лист ожидания
+            assert db.hikes.signup_of(event["id"], -other).status == "waitlist"
+            assert db.hikes.signup_of(event["id"], -me["id"]).src == "ig"                 # метка из ссылки очищена
+
+            assert run_reminders(db) == 1 and run_reminders(db) == 0                      # второй раз не дублирует
+            mine = await (await client.get("/api/hikes/mine", headers=student)).json()
+            assert next(h for h in mine["hikes"] if h["id"] == event["id"])["confirm_needed"] is True
+            token = db.hikes.conn.execute("SELECT confirm_token FROM hike_signups WHERE hike_id = ? AND user_id = ?",
+                                          (event["id"], -me["id"])).fetchone()[0]
+            assert (await client.post("/api/rsvp", json={"token": "bad", "answer": "no"})).status == 404
+            resp = await client.post("/api/rsvp", json={"token": token, "answer": "no"})
+            assert (await resp.json())["answer"] == "no"
+            assert db.hikes.signup_of(event["id"], -me["id"]) is None
+            assert db.hikes.signup_of(event["id"], -other).status == "going"
+            texts = [r["text"] for r in db.conn.execute("SELECT text FROM notifications WHERE user_id = ?", (other,))]
+            assert any("Освободилось место" in t for t in texts)
+
+    run(go())
+
+
+def test_partner_leads_reach_the_club_organizer():
+    async def go():
+        client, db = make()
+        async with client:
+            uid = db.conn.execute("SELECT id FROM web_users WHERE email = ?", (ORGANIZER_EMAIL,)).fetchone()["id"]
+            db.set_web_user_role_by_id(uid, "organizer", "mafia")
+            org, _ = await login(client, ORGANIZER_EMAIL, DEFAULT_ORGANIZER_PASSWORD)
+            await client.post("/api/leads", json={"name": "Арман", "contact": "@arman", "message": "Мафия, пт",
+                                                  "event_id": "mafia-friday"})
+            await client.post("/api/leads", json={"name": "Чужой", "contact": "@x", "event_id": "dtmm"})
+            leads = (await (await client.get("/api/organizer/leads", headers=org)).json())["leads"]
+            assert [l["name"] for l in leads] == ["Арман"] and leads[0]["status"] == "new"
+            assert (await client.post(f"/api/organizer/leads/{leads[0]['id']}", headers=org,
+                                      json={"status": "paid"})).status == 200
+            other = db.conn.execute("SELECT id FROM site_leads WHERE name = 'Чужой'").fetchone()[0]
+            assert (await client.post(f"/api/organizer/leads/{other}", headers=org, json={"status": "paid"})).status == 404
+            csv_text = await (await client.get("/api/organizer/leads?format=csv", headers=org)).text()
+            assert "Арман" in csv_text and "оплачено" in csv_text
+            bell = await (await client.get("/api/notifications", headers=org)).json()
+            assert any("Новая заявка" in n["text"] for n in bell["items"])
+
+    run(go())
+
+
+def test_admin_can_download_backup():
+    async def go():
+        client, db = make()
+        async with client:
+            uid = db.conn.execute("SELECT id FROM web_users WHERE email = ?", (STUDENT_EMAIL,)).fetchone()["id"]
+            student, _ = await login(client, STUDENT_EMAIL, DEFAULT_STUDENT_PASSWORD)
+            assert (await client.get("/api/admin/backup", headers=student)).status == 403
+            db.set_web_user_role_by_id(uid, "admin")
+            resp = await client.get("/api/admin/backup", headers=student)
+            assert resp.status == 200 and (await resp.read()).startswith(b"SQLite format 3")
+
+    run(go())

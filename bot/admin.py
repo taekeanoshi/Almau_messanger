@@ -57,6 +57,27 @@ async def list_users(request: web.Request) -> web.Response:
     return web.json_response({"users": [_admin_user(r) for r in rows]})
 
 
+async def download_backup(request: web.Request) -> web.Response:
+    """Полная копия базы одним файлом. Скачивайте перед важными событиями и деплоями."""
+    import sqlite3
+    import tempfile
+    from datetime import datetime
+    from pathlib import Path
+    _require_admin(request)
+    db = request.app["db"]
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "backup.db"
+        target = sqlite3.connect(path)
+        try:
+            db.conn.backup(target)
+        finally:
+            target.close()
+        body = path.read_bytes()
+    name = f"pople-backup-{datetime.now():%Y-%m-%d-%H%M}.db"
+    return web.Response(body=body, content_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 async def set_role(request: web.Request) -> web.Response:
     admin = _require_admin(request)
     data = await read_json_body(request)
@@ -199,6 +220,7 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/overview", overview)
     app.router.add_get("/api/admin/users", list_users)
     app.router.add_post("/api/admin/users/role", set_role)
+    app.router.add_get("/api/admin/backup", download_backup)
     app.router.add_post("/api/admin/users/ban", set_banned)
     app.router.add_post("/api/admin/invite-key", rotate_invite_key)
     app.router.add_get("/api/admin/leads", leads)

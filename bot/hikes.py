@@ -73,6 +73,15 @@ CREATE TABLE IF NOT EXISTS club_follows (
     created_at TEXT NOT NULL,
     PRIMARY KEY (user_id, club_id)
 );
+CREATE TABLE IF NOT EXISTS email_outbox (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    to_email   TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    html       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    sent_at    TEXT,                      -- когда ушло (или когда решили не отправлять)
+    result     TEXT NOT NULL DEFAULT ''   -- sent | skipped: ... | error: ...
+);
 CREATE TABLE IF NOT EXISTS notifications (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,          -- id аккаунта сайта
@@ -152,6 +161,7 @@ class Signup:
     reminded_24h: bool
     reminded_3h: bool
     attended: bool = False   # организатор отметил, что человек пришёл
+    confirmed: str | None = None   # 'yes' — подтвердил, что придёт (за сутки до события)
 
 
 # ---------- разбор того, что вводят люди ----------
@@ -208,7 +218,12 @@ class HikeStore:
         """Добавляет колонки, появившиеся после первых деплоев, не трогая данные."""
         wanted = {
             "hikes": {"kind": "ALTER TABLE hikes ADD COLUMN kind TEXT NOT NULL DEFAULT 'hike'"},
-            "hike_signups": {"attended_at": "ALTER TABLE hike_signups ADD COLUMN attended_at TEXT"},
+            "hike_signups": {
+                "attended_at": "ALTER TABLE hike_signups ADD COLUMN attended_at TEXT",
+                # подтверждение «приду / не смогу» за сутки до события
+                "confirm_token": "ALTER TABLE hike_signups ADD COLUMN confirm_token TEXT",
+                "confirmed": "ALTER TABLE hike_signups ADD COLUMN confirmed TEXT",
+            },
         }
         with self.conn:
             for table, columns in wanted.items():
@@ -337,7 +352,7 @@ class HikeStore:
             status=row["status"], src=row["src"], created_at=row["created_at"],
             checked_in=row["checked_in_at"] is not None,
             reminded_24h=bool(row["reminded_24h"]), reminded_3h=bool(row["reminded_3h"]),
-            attended=row["attended_at"] is not None,
+            attended=row["attended_at"] is not None, confirmed=row["confirmed"],
         )
 
     def signup_of(self, hike_id: str, user_id: int) -> Signup | None:

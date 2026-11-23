@@ -446,6 +446,16 @@
  </section>
 </div>
 
+<!-- СТРАНИЦА ОДНОГО СОБЫТИЯ КЛУБА (ссылка для соцсетей) -->
+<div class="page" id="p-event">
+ <section class="event-page"><div id="event-box"></div></section>
+</div>
+
+<!-- ОТВЕТ «ПРИДУ / НЕ СМОГУ» ИЗ ПИСЬМА -->
+<div class="page" id="p-rsvp">
+ <section class="event-page"><div id="rsvp-box"></div></section>
+</div>
+
 <!-- КАБИНЕТ ОРГАНИЗАТОРА КЛУБА -->
 <div class="page" id="p-cabinet">
  <section>
@@ -458,6 +468,11 @@
   <div class="head"><div><h2>Ближайшие события</h2></div></div>
   <div class="stack" id="cab-upcoming"><div class="empty">Загрузка…</div></div>
   <div id="cab-signups" style="margin-top:16px"></div>
+ </section>
+ <section id="cab-leads-sect" hidden>
+  <div class="head"><div><h2 id="cab-leads-title">Заявки клуба</h2><p>Билеты, волонтёры, запись на игру — из формы на странице клуба. Меняйте статус, когда связались или получили оплату.</p></div>
+   <button type="button" class="btn ghost sm" data-cab-leads-csv>⬇ Скачать (CSV)</button></div>
+  <div class="card" id="cab-leads"></div>
  </section>
  <section>
   <div class="head"><div><h2>Прошедшие</h2><p>Отметьте, кто пришёл, — и явка появится в отчёте.</p></div></div>

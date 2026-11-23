@@ -5,13 +5,13 @@ import dataclasses
 import hmac
 import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiohttp import web
 
 from bot.academics import register_routes as register_academics_routes
 from bot.admin import register_routes as register_admin_routes
-from bot.clubs import event_link, notify, setup_clubs, when
+from bot.clubs import clean_src, event_link, notify, notify_club_about_lead, promoted_notice, setup_clubs, when
 from bot.content import Content
 from bot.db import Database
 from bot.hikes import TZ
@@ -179,6 +179,10 @@ def _my_hike_payload(db: Database, hike, signup) -> dict:
         "my_status": signup.status,
         "waitlist_position": db.hikes.waitlist_position(hike.id, signup.user_id),
         "checked_in": signup.checked_in,
+        "confirmed": signup.confirmed == "yes",
+        # за сутки до события просим подтвердить, что придёт
+        "confirm_needed": signup.status == "going" and signup.confirmed != "yes"
+                          and hikes_now() <= hike.start <= hikes_now() + timedelta(hours=24),
         "active": signup.status == "going" and hike.is_active(hikes_now()),
     }
 
@@ -205,12 +209,15 @@ async def post_hike_signup(request: web.Request) -> web.Response:
         raise web.HTTPForbidden(reason="only student or admin accounts can sign up for hikes")
     hike = _require_hike(db, request.match_info["hike_id"])
     full_name = f"{user['first_name']} {user['last_name']}".strip()
-    result = db.hikes.signup(hike.id, _hike_key(user_id), full_name, user["phone"], src="web")
+    data = await read_json_body(request) if request.can_read_body else {}
+    src = clean_src(data.get("src", "")) if isinstance(data, dict) else ""
+    result = db.hikes.signup(hike.id, _hike_key(user_id), full_name, user["phone"], src=src or "web")
     if result == "closed":
         raise web.HTTPConflict(reason="signup is closed")
     signup = db.hikes.signup_of(hike.id, _hike_key(user_id))
     if result == "going":
-        notify(db, user_id, f"Вы записаны на «{hike.title}» — {when(hike)}.", event_link(hike))
+        notify(db, user_id, f"Вы записаны на «{hike.title}» — {when(hike)}, место: {hike.meeting_point or 'уточняется'}.",
+               event_link(hike), email_subject=f"Вы записаны: {hike.title}")
     elif result == "waitlist":
         notify(db, user_id, f"Мест на «{hike.title}» нет — вы в листе ожидания. Сообщим, если место освободится.",
                event_link(hike))
@@ -223,7 +230,7 @@ async def post_hike_cancel(request: web.Request) -> web.Response:
     hike = _require_hike(db, request.match_info["hike_id"])
     _, promoted = db.hikes.cancel_signup(hike.id, _hike_key(user_id))
     if promoted is not None:   # место освободилось — первый из листа ожидания теперь идёт
-        notify(db, -promoted.user_id, f"Освободилось место: вы записаны на «{hike.title}».", event_link(hike))
+        promoted_notice(db, hike, promoted)
     going, waitlist = db.hikes.counts(hike.id)
     return web.json_response({"ok": True, "hike": hike.public_dict(going, waitlist)})
 
@@ -338,6 +345,7 @@ async def post_lead(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(reason="name and contact are required")
 
     lead_id = db.add_lead(name, contact, message, event_id)
+    notify_club_about_lead(db, event_id, name)
     return web.json_response({"ok": True, "id": lead_id}, status=201)
 
 

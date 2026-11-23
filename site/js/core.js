@@ -316,12 +316,16 @@ const navTabOf = id => (PARTNER_PAGES.has(id) ? "partners" : id);
 let currentPage = null;
 function definePage(id, opts = {}) { PAGES[id] = opts; }
 
+// Часть адреса после «/» — параметры страницы: #event/<id>, #rsvp/<токен>/yes
+let routeArgs = [];
 function route() {
-  let id = (location.hash || "#home").slice(1) || "home";
+  const raw = (location.hash || "#home").slice(1) || "home";
+  let [id, ...rest] = raw.split("/");
+  routeArgs = rest.map(x => { try { return decodeURIComponent(x); } catch { return x; } });
   if (!(id in PAGES)) id = "home";
   const page = PAGES[id];
   if (page.auth && !chatToken) {
-    try { sessionStorage.setItem("return_to", id); } catch {}
+    try { sessionStorage.setItem("return_to", raw); } catch {}
     id = "login";
   } else if (id === "login" && chatToken) {
     id = "home";
@@ -329,7 +333,7 @@ function route() {
     id = "home";
   }
   if (currentPage && currentPage !== id && PAGES[currentPage].leave) PAGES[currentPage].leave();
-  const changed = currentPage !== id;
+  const changed = currentPage !== id || id === "event";
   currentPage = id;
   document.querySelectorAll(".page").forEach(x => x.classList.toggle("on", x.id === "p-" + id));
   document.querySelectorAll("#nav-drawer .tab").forEach(x => x.classList.toggle("on", x.dataset.p === navTabOf(id)));
@@ -397,6 +401,13 @@ function syncUnreadPolling() {
   unreadCount = 0;
   if (chatToken) { refreshUnread(); unreadTimer = setInterval(refreshUnread, 30000); }
 }
+
+// Метка источника из ссылки клуба (?src=ig) — запоминаем, чтобы передать при записи на событие
+try {
+  const src = new URLSearchParams(location.search).get("src");
+  if (src) sessionStorage.setItem("pople_src", src.slice(0, 20));
+} catch {}
+const trafficSource = () => { try { return sessionStorage.getItem("pople_src") || ""; } catch { return ""; } };
 
 function initCore() {
   loadSession();

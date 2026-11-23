@@ -49,9 +49,9 @@ function myClubsCardHtml(data) {
   const lines = data.feed.slice(0, 5).map(e => {
     const state = e.my_status === "going" ? `<span class="pill ok">записан(а)</span>`
       : e.my_status === "waitlist" ? `<span class="pill warn">лист ожидания · №${e.waitlist_position || "?"}</span>`
-      : e.spots_left > 0 ? `<a class="btn sm" href="#events" data-scroll-later="club-events">Записаться</a>`
+      : e.spots_left > 0 ? `<a class="btn sm" href="#event/${esc(e.id)}">Записаться</a>`
       : `<span class="pill">мест нет</span>`;
-    return dashLine(`${EVENT_KIND_ICON[e.kind] || "📌"} ${esc(e.title)}`, `${esc(e.club_name)} · ${esc(fmtAt(e.start))}`, state);
+    return dashLine(`<a href="#event/${esc(e.id)}" class="plain">${EVENT_KIND_ICON[e.kind] || "📌"} ${esc(e.title)}</a>`, `${esc(e.club_name)} · ${esc(fmtAt(e.start))}`, state);
   }).join("");
   return `<h3>Мои клубы<a href="#clubs">все клубы →</a></h3>
     <p class="muted small" style="margin:0 0 8px">${data.following.map(c => esc(c.name)).join(" · ")}</p>
@@ -77,6 +77,55 @@ async function loadClubEvents() {
       : `<div class="empty">Событий с записью пока нет. Подпишись на клуб, чтобы узнать о новом первым.</div>`;
     $("club-events-sect").hidden = false;
   } catch { $("club-events-sect").hidden = true; }
+}
+
+// ---------- страница одного события: #event/<id> — эту ссылку клуб публикует в соцсетях ----------
+async function loadEventPage() {
+  const box = $("event-box"), id = routeArgs[0];
+  if (!id) { location.hash = "#events"; return; }
+  box.innerHTML = `<div class="empty">Загрузка…</div>`;
+  try {
+    const event = await api(`/api/hikes/${encodeURIComponent(id)}`, {auth: false});
+    let mine;
+    if (chatToken) { try { mine = (await api("/api/hikes/mine")).hikes.find(h => h.id === id); } catch {} }
+    if (!siteClubs.length) { try { siteClubs = await fetchJson("data/clubs.json"); } catch {} }
+    const club = siteClubs.find(c => c.id === event.club);
+    const closed = event.status !== "open";
+    box.innerHTML = `
+      ${club ? `<div class="event-club">${club.logo ? `<img src="${esc(club.logo)}" alt="">` : ""}<span>${esc(club.name)}</span>
+        ${followBtn(club.id)}</div>` : ""}
+      ${closed ? `<div class="banner">Это событие отменено организатором.</div>` : hikeCard(event, mine, "")}
+      <div class="row" style="margin-top:14px">
+        <button type="button" class="btn ghost sm" data-copy-link="${esc(location.origin + location.pathname + "#event/" + id)}">🔗 Скопировать ссылку</button>
+        <a class="btn ghost sm" href="#events">Все события</a>
+      </div>`;
+    if (chatToken) loadFollowing();
+  } catch (err) {
+    box.innerHTML = `<div class="empty">${esc(explain(err, "Событие не найдено.", {404: "Такого события нет — возможно, его удалили."}))}
+      <br><a class="btn sm" href="#events" style="margin-top:12px">Смотреть все события</a></div>`;
+  }
+}
+
+// ---------- ответ из письма: #rsvp/<токен>/yes|no — без входа ----------
+async function loadRsvpPage() {
+  const [token, answer] = routeArgs;
+  const box = $("rsvp-box");
+  if (!token || !["yes", "no"].includes(answer)) { box.innerHTML = `<div class="empty">Ссылка неполная.</div>`; return; }
+  box.innerHTML = `<div class="empty">Сохраняем ответ…</div>`;
+  try {
+    const r = await api("/api/rsvp", {method: "POST", auth: false, body: {token, answer}});
+    box.innerHTML = `<div class="card rsvp-card"><h2>${r.answer === "yes" ? "✅ Ждём вас!" : "Место освобождено"}</h2>
+      <p>${esc(r.title)} · ${esc(r.when)}</p>
+      <p class="muted">${r.answer === "yes" ? "Организатор видит, что вы подтвердили." : "Спасибо, что предупредили: место получит первый из листа ожидания."}</p>
+      <a class="btn" href="#event/${esc(r.event_id)}">Открыть событие</a></div>`;
+  } catch (err) {
+    box.innerHTML = `<div class="empty">${esc(explain(err, "Не получилось сохранить ответ.", {404: "Ссылка уже не действует: возможно, вы уже ответили или запись отменена."}))}</div>`;
+  }
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("Ссылка скопирована — вставьте её в Instagram или Telegram.", "ok"); }
+  catch { prompt("Скопируйте ссылку:", text); }
 }
 
 // ---------- колокольчик ----------
@@ -131,9 +180,10 @@ function cabinetEventRow(e, past) {
     <div class="grow"><b>${EVENT_KIND_ICON[e.kind] || "📌"} ${esc(e.title)}${e.demo ? `<span class="demo-tag">Пример</span>` : ""}</b>
       <small>${esc(fmtAt(e.start))} · ${esc(e.meeting_point || "место уточняется")}</small>
       <div class="bar" aria-hidden="true"><i style="width:${Math.min(100, Math.round(e.going * 100 / e.capacity))}%"></i></div>
-      <small>Записались: ${fill} ${turnout}</small></div>
+      <small>Записались: ${fill}${!past && e.confirmed ? ` · подтвердили: ${e.confirmed}` : ""} ${turnout}</small></div>
     <div class="row cab-actions">
       <button type="button" class="btn sm" data-cab-signups="${esc(e.id)}">👥 Список</button>
+      ${past ? "" : `<button type="button" class="btn sm ghost" data-copy-link="${esc(e.link)}">🔗 Ссылка для соцсетей</button>`}
       ${past ? "" : `<button type="button" class="btn sm ghost" data-cab-edit="${esc(e.id)}">Изменить</button>`}
       <button type="button" class="btn sm ghost" data-cab-dup="${esc(e.id)}">Повторить через неделю</button>
       ${past ? "" : `<button type="button" class="btn sm ghost" data-cab-cancel="${esc(e.id)}">Отменить</button>`}
@@ -174,10 +224,27 @@ function renderCabinet() {
     : `<div class="empty">Прошедших событий пока нет.</div>`;
 }
 
+async function loadCabinetLeads() {
+  const box = $("cab-leads");
+  try {
+    const {leads, statuses, has_forms} = await api("/api/organizer/leads" + cabinetQuery());
+    $("cab-leads-sect").hidden = !has_forms;
+    if (!has_forms) return;
+    const fresh = leads.filter(l => l.status === "new").length;
+    $("cab-leads-title").innerHTML = `Заявки клуба${fresh ? ` <span class="count">${fresh}</span>` : ""}`;
+    box.innerHTML = leads.length ? leads.map(l => `<div class="roster-row"><span class="grow"><b>${esc(l.name)}</b>
+        <small>${esc(l.contact)} · ${esc(fmtWhen(l.at))}</small><small>${esc(l.message)}</small></span>
+        <select data-lead-status="${l.id}" aria-label="Статус заявки">${Object.entries(statuses).map(([v, label]) =>
+          `<option value="${v}" ${l.status === v ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></div>`).join("")
+      : `<div class="empty">Заявок пока нет. Они приходят из формы на странице клуба.</div>`;
+  } catch { $("cab-leads-sect").hidden = true; }
+}
+
 async function loadCabinet() {
   try {
     cabinet = await api("/api/organizer/overview" + cabinetQuery());
     renderCabinet();
+    loadCabinetLeads();
     if (cabinetOpenEvent) loadCabinetSignups(cabinetOpenEvent);
   } catch (err) {
     $("cab-upcoming").innerHTML = `<div class="empty">${esc(explain(err, "Не получилось открыть кабинет."))}</div>`;
@@ -190,13 +257,15 @@ async function loadCabinetSignups(eventId) {
   try {
     const {event, signups} = await api(`/api/organizer/events/${encodeURIComponent(eventId)}/signups${cabinetQuery()}`);
     const going = signups.filter(s => s.status === "going"), waiting = signups.filter(s => s.status === "waitlist");
-    const row = s => `<div class="roster-row"><span class="grow"><b>${esc(s.name)}</b><small>${esc(s.phone)}${s.checked_in ? " · спуск отмечен" : ""}</small></span>
+    const SRC = {ig: "Instagram", tg: "Telegram", share: "по ссылке", web: "сайт", "сайт": "сайт", demo: "пример"};
+    const row = s => `<div class="roster-row"><span class="grow"><b>${esc(s.name)}</b><small>${esc(s.phone)} · ${esc(SRC[s.src] || s.src)}${s.confirmed ? " · ✅ подтвердил(а)" : ""}${s.checked_in ? " · спуск отмечен" : ""}</small></span>
       ${s.status === "going"
         ? `<label class="att"><input type="checkbox" data-cab-att="${s.user_id}" ${s.attended ? "checked" : ""}> пришёл</label>`
         : `<span class="pill warn">ожидание · №${s.waitlist_position}</span>`}</div>`;
     box.innerHTML = `<div class="card">
       <h3>${esc(event.title)} · ${esc(fmtAt(event.start))}<a href="#cabinet" id="cab-signups-close">закрыть ✕</a></h3>
-      <p class="muted small" style="margin:0 0 10px">Идут: ${event.going} из ${event.capacity} · лист ожидания: ${event.waitlist} · пришли: <b id="cab-attended">${event.attended}</b></p>
+      <p class="muted small" style="margin:0 0 10px">Идут: ${event.going} из ${event.capacity} · лист ожидания: ${event.waitlist} · подтвердили: ${event.confirmed} · пришли: <b id="cab-attended">${event.attended}</b></p>
+      <p class="muted small" style="margin:0 0 10px">Откуда пришли: ${Object.entries(event.sources).map(([k, v]) => `${esc(SRC[k] || k)} — ${v}`).join(", ") || "—"}</p>
       <div class="row" style="margin-bottom:12px">
         <button type="button" class="btn sm ghost" data-cab-csv="${esc(event.id)}">⬇ Скачать список (CSV)</button>${proTag}
       </div>
@@ -256,6 +325,16 @@ async function cabinetClick(e) {
     } catch (err) { fail(err, "Не получилось отменить событие."); }
     return;
   }
+  if ((b = t.closest("[data-cab-leads-csv]"))) {
+    try {
+      const blob = await apiBlob("/api/organizer/leads?format=csv" + (q ? "&" + q.slice(1) : ""));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "zayavki.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (err) { fail(err, "Не получилось скачать заявки."); }
+    return;
+  }
   if ((b = t.closest("[data-cab-csv]"))) {
     try {
       const blob = await apiBlob(`/api/organizer/events/${encodeURIComponent(b.dataset.cabCsv)}/signups?format=csv${q ? "&" + q.slice(1) : ""}`);
@@ -269,10 +348,14 @@ async function cabinetClick(e) {
 
 function initClubs() {
   definePage("cabinet", {auth: true, roles: ["organizer", "admin"], enter() { cabinetEditing = null; loadCabinet(); }});
+  definePage("event", {enter: loadEventPage});
+  definePage("rsvp", {enter: loadRsvpPage});
   $("nav-bell").addEventListener("click", e => { e.stopPropagation(); toggleNotifPanel(); });
   document.addEventListener("click", e => {
     const follow = e.target.closest("[data-follow]");
     if (follow) { toggleFollow(follow); return; }
+    const copy = e.target.closest("[data-copy-link]");
+    if (copy) { copyText(copy.dataset.copyLink); return; }
     if (e.target.closest(".notif")) closeNotifPanel();
     else if (!e.target.closest("#notif-panel") && !e.target.closest("#nav-bell")) closeNotifPanel();
     if (e.target.closest("#p-cabinet")) cabinetClick(e);
@@ -290,6 +373,15 @@ function initClubs() {
     }
   });
   document.addEventListener("change", async e => {
+    const lead = e.target.closest("[data-lead-status]");
+    if (lead) {
+      try {
+        await api(`/api/organizer/leads/${lead.dataset.leadStatus}${cabinetQuery()}`, {method: "POST", body: {status: lead.value}});
+        toast("Статус заявки сохранён.", "ok");
+        loadCabinetLeads();
+      } catch (err) { fail(err, "Не получилось сохранить статус."); }
+      return;
+    }
     const box = e.target.closest("[data-cab-att]");
     if (!box) return;
     try {

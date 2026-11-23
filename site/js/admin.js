@@ -128,7 +128,10 @@ async function renderAdminDemo() {
       <button type="button" class="btn" data-admin-demo="seed">Создать 350 демо-студентов</button>
       <button type="button" class="btn danger" data-admin-demo="delete">Удалить всех демо</button>
     </div>
-    <p class="muted small" style="margin:0">Нажмите «Удалить всех демо» перед тем, как открыть платформу настоящим студентам.</p></div>`;
+    <p class="muted small" style="margin:0">Нажмите «Удалить всех демо» перед тем, как открыть платформу настоящим студентам.</p></div>
+    <div class="card stack" style="margin-top:14px">
+    <p style="margin:0"><b>Резервная копия базы</b> — все аккаунты, записи на события, заявки и оценки одним файлом. Скачивайте перед важными событиями и после каждого крупного обновления.</p>
+    <div class="actions"><button type="button" class="btn" data-admin-backup>⬇ Скачать резервную копию</button></div></div>`;
 }
 
 const ADMIN_TABS = {demo: renderAdminDemo, users: renderAdminUsers, reports: renderAdminReports, keys: renderAdminKeys, leads: renderAdminLeads, hikes: renderAdminHikes};
@@ -191,6 +194,17 @@ function initAdmin() {
         loadAdminOverview();
         renderAdminReports();
       } catch (err) { fail(err, "Не получилось закрыть жалобу."); }
+      return;
+    }
+    if (e.target.closest("[data-admin-backup]")) {
+      try {
+        const blob = await apiBlob("/api/admin/backup");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = `pople-backup-${new Date().toISOString().slice(0, 10)}.db`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        toast("Резервная копия скачана. Храните её в надёжном месте.", "ok");
+      } catch (err) { fail(err, "Не получилось скачать резервную копию."); }
       return;
     }
     const demoBtn = e.target.closest("[data-admin-demo]");

@@ -352,6 +352,10 @@ class Database:
         Добираем недостающие колонки через ALTER TABLE, чтобы запись не падала с
         'no such column' на расхождении схемы."""
         column_migrations = {
+            "site_leads": {
+                # статус заявки для организатора клуба: new | contacted | paid | cancelled
+                "status": "ALTER TABLE site_leads ADD COLUMN status TEXT NOT NULL DEFAULT 'new'",
+            },
             "web_users": {
                 "email": "ALTER TABLE web_users ADD COLUMN email TEXT",
                 "password_hash": "ALTER TABLE web_users ADD COLUMN password_hash TEXT",

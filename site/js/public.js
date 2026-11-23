@@ -167,7 +167,7 @@ function fmtStart(iso) {
 
 function hikeActions(h, mine) {
   if (h.going == null) return "";  // данные из запасного файла, а не с сервера — записаться нельзя
-  if (!chatToken) return `<a class="btn sm" href="#login">Войти, чтобы записаться</a>`;
+  if (!chatToken) return `<a class="btn sm" href="#login" data-login-return="event/${esc(h.id)}">Войти, чтобы записаться</a>`;
   if (mine) {
     const state = mine.my_status === "going"
       ? `<span class="pill ok">Вы записаны</span>`
@@ -175,7 +175,12 @@ function hikeActions(h, mine) {
     const checkin = mine.active
       ? (mine.checked_in ? `<span class="pill ok">Спуск отмечен</span>`
         : `<button type="button" class="btn sm" data-hike-checkin="${esc(h.id)}">✅ Я спустился</button>`) : "";
-    return `<div class="row">${state}${checkin}
+    const confirm = mine.confirm_needed
+      ? `<div class="confirm-box"><b>Событие уже скоро. Придёте?</b><div class="row">
+          <button type="button" class="btn sm" data-hike-confirm="${esc(h.id)}" data-answer="yes">✅ Приду</button>
+          <button type="button" class="btn sm ghost" data-hike-confirm="${esc(h.id)}" data-answer="no">Не смогу — отдать место</button></div></div>`
+      : mine.confirmed ? `<span class="pill ok">Подтвердили, что придёте</span>` : "";
+    return `${confirm}<div class="row">${state}${checkin}
       <button type="button" class="btn sm ghost" data-hike-cancel="${esc(h.id)}">Отменить запись</button></div>`;
   }
   if (!isStudentLike()) return "";
@@ -235,7 +240,8 @@ async function hikeAction(hikeId, action) {
     checkin: ["Не получилось отметиться.", {409: "Отметка доступна только во время похода."}],
   };
   try {
-    const data = await api(`/api/hikes/${encodeURIComponent(hikeId)}/${action}`, {method: "POST"});
+    const body = action === "signup" ? {src: trafficSource()} : undefined;
+    const data = await api(`/api/hikes/${encodeURIComponent(hikeId)}/${action}`, {method: "POST", body});
     if (action === "signup") {
       toast(data.hike.my_status === "going" ? "Вы записаны! Событие появится на главной."
         : "Мест нет — вы в листе ожидания. Если место освободится, запись подтвердится сама.", "ok");
@@ -243,6 +249,7 @@ async function hikeAction(hikeId, action) {
     else toast("Отмечено: вы спустились. Хорошего отдыха!", "ok");
     loadHikes();
     loadClubEvents();
+    if (currentPage === "event") loadEventPage();
     refreshNotifications();
   } catch (err) { fail(err, ...messages[action]); }
 }
@@ -479,12 +486,25 @@ function initPublic() {
       startCompanySearch(eventId);
       return;
     }
+    const loginBtn = e.target.closest("[data-login-return]");
+    if (loginBtn) { try { sessionStorage.setItem("return_to", loginBtn.dataset.loginReturn); } catch {} }
+    const confirmBtn = e.target.closest("[data-hike-confirm]");
+    if (confirmBtn) {
+      const yes = confirmBtn.dataset.answer === "yes";
+      if (!yes && !(await askConfirm("Отдать место? Запись отменится, и место получит первый из листа ожидания.", {ok: "Отдать место", danger: true}))) return;
+      try {
+        await api(`/api/hikes/${encodeURIComponent(confirmBtn.dataset.hikeConfirm)}/confirm`, {method: "POST", body: {answer: yes ? "yes" : "no"}});
+        toast(yes ? "Спасибо! Организатор знает, что вы придёте." : "Место освобождено. Спасибо, что предупредили!", "ok");
+        loadHikes(); loadClubEvents(); if (currentPage === "event") loadEventPage();
+      } catch (err) { fail(err, "Не получилось ответить."); }
+      return;
+    }
     const hikeBtn = e.target.closest("[data-hike-signup],[data-hike-cancel],[data-hike-checkin]");
     if (hikeBtn) {
       const d = hikeBtn.dataset;
       if (d.hikeSignup) hikeAction(d.hikeSignup, "signup");
       else if (d.hikeCheckin) hikeAction(d.hikeCheckin, "checkin");
-      else if (await askConfirm("Отменить запись на поход? Место освободится для следующего в листе ожидания.", {ok: "Отменить запись", danger: true})) {
+      else if (await askConfirm("Отменить запись? Место освободится для следующего в листе ожидания.", {ok: "Отменить запись", danger: true})) {
         hikeAction(d.hikeCancel, "cancel");
       }
     }
