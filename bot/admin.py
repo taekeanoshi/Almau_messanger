@@ -13,7 +13,7 @@ from bot.curriculum import spread_demo_activity, sync_all
 from bot.demo_people import seed_demo_people
 from bot.web_chat import _hash_invite_key, read_json_body, require_session
 
-VALID_ROLES = {"student", "teacher", "registrar", "admin"}
+VALID_ROLES = {"student", "teacher", "registrar", "organizer", "admin"}
 INVITE_KEY_ROLES = {"teacher", "registrar"}
 
 
@@ -28,7 +28,7 @@ def _require_admin(request: web.Request):
 def _admin_user(row) -> dict:
     return {
         "id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"],
-        "email": row["email"], "phone": row["phone"], "role": row["role"],
+        "email": row["email"], "phone": row["phone"], "role": row["role"], "club_id": row["club_id"],
         "banned": bool(row["banned"]), "email_verified": bool(row["email_verified"]),
         "course": row["course"], "specialty": row["specialty"], "created_at": row["created_at"],
         "demo": bool(row["is_demo"]),
@@ -71,7 +71,12 @@ async def set_role(request: web.Request) -> web.Response:
     # Последнего админа нельзя разжаловать — иначе в панель больше никто не войдёт.
     if target["role"] == "admin" and role != "admin" and db.count_web_admins() <= 1:
         raise web.HTTPConflict(reason="can't demote the last admin")
-    db.set_web_user_role_by_id(target_id, role)
+    club_id = str(data.get("club_id", "")).strip()[:40]
+    if role == "organizer":
+        content = request.app["content"]
+        if club_id not in {c.id for c in content.clubs}:
+            raise web.HTTPBadRequest(reason="organizer needs a valid club_id")
+    db.set_web_user_role_by_id(target_id, role, club_id)
     if role not in ("student", "admin"):
         request.app["web_mm"].leave(target_id)  # сотрудникам анонимный чат недоступен
     return web.json_response({"ok": True, "user": _admin_user(db.get_web_user(target_id)), "by": admin["id"]})

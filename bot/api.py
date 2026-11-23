@@ -11,6 +11,7 @@ from aiohttp import web
 
 from bot.academics import register_routes as register_academics_routes
 from bot.admin import register_routes as register_admin_routes
+from bot.clubs import event_link, notify, setup_clubs, when
 from bot.content import Content
 from bot.db import Database
 from bot.hikes import TZ
@@ -208,6 +209,11 @@ async def post_hike_signup(request: web.Request) -> web.Response:
     if result == "closed":
         raise web.HTTPConflict(reason="signup is closed")
     signup = db.hikes.signup_of(hike.id, _hike_key(user_id))
+    if result == "going":
+        notify(db, user_id, f"Вы записаны на «{hike.title}» — {when(hike)}.", event_link(hike))
+    elif result == "waitlist":
+        notify(db, user_id, f"Мест на «{hike.title}» нет — вы в листе ожидания. Сообщим, если место освободится.",
+               event_link(hike))
     return web.json_response({"ok": True, "hike": _my_hike_payload(db, hike, signup)})
 
 
@@ -215,7 +221,9 @@ async def post_hike_cancel(request: web.Request) -> web.Response:
     user_id = require_session(request)
     db: Database = request.app["db"]
     hike = _require_hike(db, request.match_info["hike_id"])
-    db.hikes.cancel_signup(hike.id, _hike_key(user_id))
+    _, promoted = db.hikes.cancel_signup(hike.id, _hike_key(user_id))
+    if promoted is not None:   # место освободилось — первый из листа ожидания теперь идёт
+        notify(db, -promoted.user_id, f"Освободилось место: вы записаны на «{hike.title}».", event_link(hike))
     going, waitlist = db.hikes.counts(hike.id)
     return web.json_response({"ok": True, "hike": hike.public_dict(going, waitlist)})
 
@@ -282,6 +290,8 @@ async def get_dashboard(request: web.Request) -> web.Response:
         "events": events,
         "hikes": _my_hikes(db, user_id),
     }
+    if user["role"] == "organizer":
+        out["organizer_club"] = user["club_id"]
     if user["role"] in ("teacher", "admin"):
         out["teaching"] = {
             "courses": len(db.list_courses() if user["role"] == "admin" else db.courses_taught_by(user_id)),
@@ -433,6 +443,7 @@ def build_app(db: Database, content: Content, cors_origin: str = "*",
     app.router.add_post("/api/admin/reset-web-chat", admin_reset_web_chat)
     app.router.add_post("/api/admin/set-role", admin_set_role)
     app.router.add_post("/api/admin/rotate-invite-key", admin_rotate_invite_key)
+    setup_clubs(app)
     register_admin_routes(app)
     register_academics_routes(app)
     register_web_chat_routes(app, brevo_api_key=brevo_api_key, brevo_sender_email=brevo_sender_email,

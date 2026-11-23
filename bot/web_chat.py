@@ -276,7 +276,7 @@ def _user_payload(row) -> dict:
         "id": row["id"], "first_name": row["first_name"], "last_name": row["last_name"],
         "email": row["email"], "phone": row["phone"], "gender": row["gender"],
         "nickname": row["nickname"], "course": row["course"], "specialty": row["specialty"],
-        "role": row["role"],
+        "role": row["role"], "club_id": row["club_id"] if "club_id" in row.keys() else "",
     }
 
 

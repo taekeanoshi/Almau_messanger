@@ -18,7 +18,7 @@ const MONTHS = ["января", "февраля", "марта", "апреля", 
 const WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 const WEEKDAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const WEEKDAY_FULL = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
-const ROLE_NAMES = {student: "Студент", teacher: "Преподаватель", registrar: "Отдел расписания", admin: "Администратор"};
+const ROLE_NAMES = {student: "Студент", teacher: "Преподаватель", registrar: "Отдел расписания", organizer: "Организатор клуба", admin: "Администратор"};
 
 // «2 курс» для цифр, как есть — для «Магистратура» и т.п.
 const courseLabel = c => !c ? "" : /^\d+$/.test(c) ? `${c} курс` : c;
@@ -363,7 +363,8 @@ function renderNav() {
   const items = [
     `<div class="nav-user"><b>${esc(fullName(chatUser))}</b><span>${esc(ROLE_NAMES[chatUser.role] || "")}</span></div>`,
     link("home", "🏠 Главная"),
-    link("academics", "🎓 Учёба"),
+    hasRole("organizer", "admin") ? link("cabinet", "🎪 Кабинет клуба") : "",
+    hasRole("organizer") ? "" : link("academics", "🎓 Учёба"),
     isStudentLike() ? link("chat", "💬 Анонимный чат") : "",
     link("people", "✉️ Сообщения", unread),
     `<div class="sep"></div>`,

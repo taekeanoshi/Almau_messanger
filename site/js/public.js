@@ -30,7 +30,7 @@ function clubTile(c) {
     ${c.instagram ? `<a class="ig" href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ""}
     <h3>${esc(c.name)}</h3><p>${esc(c.description)}</p>
     <div class="chips">${c.partner ? `<span>🤝 Партнёр Pople</span>` : ""}${c.activities.map(x => `<span>${esc(x)}</span>`).join("")}</div>
-    ${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">${esc(c.cta || "🏔 Походы и запись")}</a>` : ""}</article>`;
+    <div class="row">${c.partner ? `<a class="btn sm" href="${esc(c.page || "#summit")}">${esc(c.cta || "🏔 Походы и запись")}</a>` : ""}${followBtn(c.id)}</div></article>`;
 }
 
 function eventTile(e) {
@@ -182,18 +182,20 @@ function hikeActions(h, mine) {
   return `<button type="button" class="btn sm" data-hike-signup="${esc(h.id)}">${h.spots_left > 0 ? "Записаться" : "В лист ожидания"}</button>`;
 }
 
-function hikeCard(h, mine) {
+// Карточка события клуба. Поход — частный случай: у него есть сложность и «Я спустился».
+function hikeCard(h, mine, clubName = "") {
+  const isHike = (h.kind || "hike") === "hike";
   const live = h.going != null;
   const full = live && h.spots_left <= 0;
   const spots = !live ? `Мест: ${h.capacity}`
     : full ? `Мест нет, в листе ожидания: ${h.waitlist}` : `Осталось ${h.spots_left} из ${h.capacity} мест`;
   const pct = live ? Math.min(100, Math.round(h.going * 100 / h.capacity)) : 0;
   return `<article class="hike">
-    <div class="when">${esc(fmtStart(h.start))}</div>
-    <h3>${esc(h.title)}${h.demo ? `<span class="demo-tag">Пример</span>` : ""}</h3>
+    <div class="when">${esc(fmtStart(h.start))}${clubName ? ` · ${esc(clubName)}` : ""}</div>
+    <h3>${isHike ? "" : (EVENT_KIND_ICON[h.kind] || "") + " "}${esc(h.title)}${h.demo ? `<span class="demo-tag">Пример</span>` : ""}</h3>
     ${h.route ? `<p>${esc(h.route)}</p>` : ""}
-    <div class="meta"><span>🥾 ${esc(h.difficulty)}</span><span>⏱ ~${esc(String(h.duration_hours).replace(".", ","))} ч</span><span>💰 ${esc(h.price)}</span></div>
-    <p>📍 Сбор: ${esc(h.meeting_point || "уточняется")}</p>
+    <div class="meta">${isHike ? `<span>🥾 ${esc(h.difficulty)}</span>` : ""}<span>⏱ ~${esc(String(h.duration_hours).replace(".", ","))} ч</span><span>💰 ${esc(h.price)}</span></div>
+    <p>📍 ${isHike ? "Сбор" : "Место"}: ${esc(h.meeting_point || "уточняется")}</p>
     <div class="spots">${esc(spots)}</div>
     ${live ? `<div class="bar" aria-hidden="true"><i style="width:${pct}%"></i></div>` : ""}
     ${hikeActions(h, mine)}
@@ -228,18 +230,20 @@ async function loadHikes() {
 
 async function hikeAction(hikeId, action) {
   const messages = {
-    signup: ["Не получилось записаться.", {409: "Запись на этот поход уже закрыта."}],
+    signup: ["Не получилось записаться.", {409: "Запись на это событие уже закрыта."}],
     cancel: ["Не получилось отменить запись.", {}],
     checkin: ["Не получилось отметиться.", {409: "Отметка доступна только во время похода."}],
   };
   try {
     const data = await api(`/api/hikes/${encodeURIComponent(hikeId)}/${action}`, {method: "POST"});
     if (action === "signup") {
-      toast(data.hike.my_status === "going" ? "Вы записаны на поход! Он появится на главной."
+      toast(data.hike.my_status === "going" ? "Вы записаны! Событие появится на главной."
         : "Мест нет — вы в листе ожидания. Если место освободится, запись подтвердится сама.", "ok");
     } else if (action === "cancel") toast("Запись отменена.");
     else toast("Отмечено: вы спустились. Хорошего отдыха!", "ok");
     loadHikes();
+    loadClubEvents();
+    refreshNotifications();
   } catch (err) { fail(err, ...messages[action]); }
 }
 
@@ -420,9 +424,9 @@ async function renderPartners() {
 }
 
 function initPublic() {
-  definePage("clubs");
+  definePage("clubs", {enter() { loadFollowing(); }});
   definePage("partners", {enter: renderPartners});
-  definePage("events", {enter: enhanceEventsWithGoing});
+  definePage("events", {enter() { enhanceEventsWithGoing(); loadClubEvents(); }});
   definePage("summit", {enter: loadSummit});
   definePage("remus", {enter: loadRemus});
   definePage("hunters", {enter: loadHunters});

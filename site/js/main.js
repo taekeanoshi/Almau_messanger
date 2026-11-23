@@ -10,4 +10,5 @@ initAcademics();
 initTeaching();
 initProfile();
 initAdmin();
+initClubs();
 startApp();

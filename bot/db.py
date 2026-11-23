@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS web_users (
     specialty     TEXT NOT NULL DEFAULT '',
     nickname      TEXT NOT NULL DEFAULT '',  -- анонимный ник, виден собеседнику вместо имени
     role          TEXT NOT NULL DEFAULT 'student',  -- 'student' | 'teacher' | 'registrar' | 'admin'
+    club_id       TEXT NOT NULL DEFAULT '',         -- для role='organizer': каким клубом управляет
     is_demo       INTEGER NOT NULL DEFAULT 0,       -- 1 = демо-аккаунт для витрины, не настоящий человек
     last_seen_at  TEXT,                             -- когда последний раз заходил(а), ISO UTC
     banned        INTEGER NOT NULL DEFAULT 0,
@@ -361,6 +362,7 @@ class Database:
                 "nickname": "ALTER TABLE web_users ADD COLUMN nickname TEXT NOT NULL DEFAULT ''",
                 "role": "ALTER TABLE web_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'",
                 "is_demo": "ALTER TABLE web_users ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0",
+                "club_id": "ALTER TABLE web_users ADD COLUMN club_id TEXT NOT NULL DEFAULT ''",
                 "last_seen_at": "ALTER TABLE web_users ADD COLUMN last_seen_at TEXT",
             },
             "web_messages": {
@@ -1346,9 +1348,11 @@ class Database:
                 self.conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
         return cur.rowcount > 0
 
-    def set_web_user_role_by_id(self, user_id: int, role: str) -> bool:
+    def set_web_user_role_by_id(self, user_id: int, role: str, club_id: str = "") -> bool:
+        """club_id имеет смысл только для организатора клуба; у остальных ролей он пустой."""
         with self.conn:
-            cur = self.conn.execute("UPDATE web_users SET role = ? WHERE id = ?", (role, user_id))
+            cur = self.conn.execute("UPDATE web_users SET role = ?, club_id = ? WHERE id = ?",
+                                    (role, club_id if role == "organizer" else "", user_id))
         return cur.rowcount > 0
 
     def mark_web_user_demo(self, email: str) -> None:

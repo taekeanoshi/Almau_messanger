@@ -56,7 +56,7 @@ function attendanceCard(d) {
 
 function eventsCard(d) {
   const lines = [
-    ...d.hikes.map(h => dashLine(`🏔 ${esc(h.title)}`, esc(fmtStart(h.start)),
+    ...d.hikes.map(h => dashLine(`${EVENT_KIND_ICON[h.kind] || "🏔"} ${esc(h.title)}`, esc(fmtStart(h.start)),
       h.my_status === "going" ? `<span class="pill ok">записан(а)</span>` : `<span class="pill warn">лист ожидания</span>`)),
     ...d.events.map(e => dashLine(esc(e.title), esc(e.date),
       `<button type="button" class="btn ghost sm" data-find-company="${esc(e.id)}">🎟 Компания</button>`)),
@@ -80,6 +80,7 @@ function quickActions(d) {
   buttons.push(`<a class="btn ghost" href="#people">✉️ Сообщения${unread}</a>`);
   buttons.push(`<a class="btn ghost" href="#academics">${role === "registrar" ? "🗓 Расписание" : "🎓 Учёба"}</a>`);
   if (role === "student" || role === "admin") buttons.push(`<a class="btn ghost" href="#events">🎉 Ивенты</a>`);
+  if (role === "organizer") return `<a class="btn" href="#cabinet">🎪 Кабинет клуба</a><a class="btn ghost" href="#people">✉️ Сообщения${unread}</a><a class="btn ghost" href="#events">🎉 Ивенты</a>`;
   if (role === "admin") buttons.push(`<a class="btn ghost" href="#admin">🛠 Админка</a>`);
   return buttons.join("");
 }
@@ -98,11 +99,16 @@ function renderDashboard(d) {
     studentCards ? gradesCard(d) : "",
     studentCards ? attendanceCard(d) : "",
     studentCards ? eventsCard(d) : "",
+    studentCards ? `<div class="card" id="dash-clubs"><h3>Мои клубы</h3>${dashEmpty("Загрузка…")}</div>` : "",
+    d.organizer_club ? `<div class="card"><h3>Кабинет клуба</h3>${dashEmpty(
+      "События клуба, списки записавшихся, отметка пришедших и сообщения участникам.")}
+      <a class="btn sm" href="#cabinet" style="margin-top:12px">Открыть кабинет</a></div>` : "",
     d.user.role === "registrar" ? `<div class="card"><h3>Отдел расписания</h3>${dashEmpty(
       "Расписание дисциплин, назначение преподавателей и перевод студентов между днями — в разделе «Учёба».")}
       <a class="btn sm" href="#academics" style="margin-top:12px">Открыть расписание</a></div>` : "",
   ].join("");
   if (d.unread !== unreadCount) { unreadCount = d.unread; renderNav(); }
+  if (studentCards) loadMyClubsCard();
 }
 
 async function loadDashboard() {

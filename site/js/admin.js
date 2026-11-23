@@ -152,7 +152,13 @@ function initAdmin() {
     const select = e.target.closest("[data-admin-role]");
     if (!select) return;
     try {
-      await api("/api/admin/users/role", {method: "POST", body: {user_id: Number(select.dataset.adminRole), role: select.value}});
+      const body = {user_id: Number(select.dataset.adminRole), role: select.value};
+      if (select.value === "organizer") {   // организатору нужен клуб, которым он управляет
+        const ids = siteClubs.map(c => `${c.id} — ${c.name}`).join("\n");
+        body.club_id = (prompt(`Каким клубом управляет организатор? Введите id:\n${ids}`, "summit") || "").trim();
+        if (!body.club_id) { loadAdminUsers(); return; }
+      }
+      await api("/api/admin/users/role", {method: "POST", body});
       toast(`Роль изменена: ${ROLE_NAMES[select.value]}.`, "ok");
       loadAdminOverview();
       if (Number(select.dataset.adminRole) === chatUser.id) refreshMe();

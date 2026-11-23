@@ -23,10 +23,12 @@
 <nav>
  <div class="wrap">
   <a href="#home" class="logo"><img src="img/logo.png" alt=""><span>Pop<b>le</b></span></a>
+  <button type="button" class="btn ghost" id="nav-bell" aria-label="Уведомления" hidden>🔔</button>
   <button type="button" class="btn ghost" id="nav-menu-btn" aria-expanded="false" aria-controls="nav-drawer" hidden>☰ Меню</button>
   <a class="btn" id="nav-auth-btn" href="#login">Войти / Регистрация</a>
  </div>
  <div class="nav-drawer" id="nav-drawer"></div>
+ <div class="notif-panel" id="notif-panel" aria-live="polite"></div>
 </nav>
 
 <main class="wrap">
@@ -438,6 +440,29 @@
    <div class="filters" id="ef"></div></div>
   <div class="grid" id="events"></div>
  </section>
+ <section id="club-events-sect" hidden>
+  <div class="head"><div><h2 id="club-events-title">События клубов с записью</h2><p>Места ограничены: запишись сейчас, а если мест нет — встань в лист ожидания, место может освободиться.</p></div></div>
+  <div class="grid" id="club-events"></div>
+ </section>
+</div>
+
+<!-- КАБИНЕТ ОРГАНИЗАТОРА КЛУБА -->
+<div class="page" id="p-cabinet">
+ <section>
+  <div class="head"><div><h2 id="cab-title">Кабинет клуба</h2><p>Создавайте события, смотрите, кто записался, и отмечайте пришедших. Студенты получают уведомления сами.</p></div>
+   <button type="button" class="btn" id="cab-new">＋ Новое событие</button></div>
+  <div class="dash" id="cab-stats"></div>
+  <div id="cab-form-box"></div>
+ </section>
+ <section>
+  <div class="head"><div><h2>Ближайшие события</h2></div></div>
+  <div class="stack" id="cab-upcoming"><div class="empty">Загрузка…</div></div>
+  <div id="cab-signups" style="margin-top:16px"></div>
+ </section>
+ <section>
+  <div class="head"><div><h2>Прошедшие</h2><p>Отметьте, кто пришёл, — и явка появится в отчёте.</p></div></div>
+  <div class="stack" id="cab-past"></div>
+ </section>
 </div>
 
 <!-- ВХОД / РЕГИСТРАЦИЯ / СБРОС ПАРОЛЯ -->
@@ -760,6 +785,7 @@
 <script src="js/exam.js" defer></script>
 <script src="js/profile.js" defer></script>
 <script src="js/admin.js" defer></script>
+<script src="js/clubs.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>
 </html>

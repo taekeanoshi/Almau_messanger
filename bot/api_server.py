@@ -14,6 +14,7 @@ from bot.config import BASE_DIR, _load_dotenv
 from bot.content import Content
 from bot.db import Database
 from bot.curriculum import spread_demo_activity, sync_all
+from bot.demo_club import seed_demo_club
 from bot.demo_people import seed_demo_people
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ async def main() -> None:
     db, content = Database(db_path), Content(data_dir)
     db.hikes.seed(content.hikes_seed)
     seed_demo_people(db)
+    seed_demo_club(db)           # демо-студент и демо-организатор для показа клубной системы
     sync_all(db)                 # каталог дисциплин AlmaU, записи студентов, текущие оценки демо-студентов
     spread_demo_activity(db)     # «был(а) в сети» у демо-аккаунтов — в пределах последних трёх суток
     app = build_app(db, content, cors_origin=cors_origin,

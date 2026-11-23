@@ -67,7 +67,24 @@ CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS club_follows (
+    user_id    INTEGER NOT NULL,          -- id аккаунта сайта (web_users.id)
+    club_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, club_id)
+);
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,          -- id аккаунта сайта
+    text       TEXT NOT NULL,
+    link       TEXT NOT NULL DEFAULT '',  -- куда вести по клику, например "#summit"
+    created_at TEXT NOT NULL,
+    read_at    TEXT
+);
 """
+
+# Типы событий клуба. Поход — исторически первый; остальные добавлены с кабинетом организатора.
+EVENT_KINDS = {"hike": "Поход", "party": "Вечеринка", "game": "Игра", "lecture": "Лекция", "tickets": "Билеты"}
 
 
 def now() -> datetime:
@@ -91,6 +108,7 @@ class Hike:
     gear: tuple[str, ...]
     status: str
     demo: bool
+    kind: str = "hike"
 
     @property
     def start(self) -> datetime:
@@ -106,7 +124,8 @@ class Hike:
 
     def is_active(self, at: datetime) -> bool:
         """Идёт ли поход (с запасом): в это время работают «Я спустился» и SOS."""
-        return self.is_open and self.start - ACTIVE_BEFORE <= at <= self.end + ACTIVE_AFTER
+        return (self.is_open and self.kind == "hike"
+                and self.start - ACTIVE_BEFORE <= at <= self.end + ACTIVE_AFTER)
 
     def public_dict(self, going: int, waitlist: int) -> dict:
         """Данные для сайта: без персональных данных участников."""
@@ -116,6 +135,7 @@ class Hike:
             "route": self.route, "difficulty": self.difficulty, "capacity": self.capacity,
             "price": self.price, "going": going, "waitlist": waitlist,
             "spots_left": max(self.capacity - going, 0), "demo": self.demo, "status": self.status,
+            "kind": self.kind,
         }
 
 
@@ -131,6 +151,7 @@ class Signup:
     checked_in: bool
     reminded_24h: bool
     reminded_3h: bool
+    attended: bool = False   # организатор отметил, что человек пришёл
 
 
 # ---------- разбор того, что вводят люди ----------
@@ -181,6 +202,20 @@ class HikeStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
         conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Добавляет колонки, появившиеся после первых деплоев, не трогая данные."""
+        wanted = {
+            "hikes": {"kind": "ALTER TABLE hikes ADD COLUMN kind TEXT NOT NULL DEFAULT 'hike'"},
+            "hike_signups": {"attended_at": "ALTER TABLE hike_signups ADD COLUMN attended_at TEXT"},
+        }
+        with self.conn:
+            for table, columns in wanted.items():
+                have = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+                for name, sql in columns.items():
+                    if name not in have:
+                        self.conn.execute(sql)
 
     # --- походы ---
 
@@ -191,7 +226,7 @@ class HikeStore:
             duration_hours=row["duration_hours"], meeting_point=row["meeting_point"], route=row["route"],
             difficulty=row["difficulty"], capacity=row["capacity"], price=row["price"],
             lat=row["lat"], lon=row["lon"], gear=tuple(g for g in row["gear"].split("\n") if g),
-            status=row["status"], demo=bool(row["demo"]),
+            status=row["status"], demo=bool(row["demo"]), kind=row["kind"],
         )
 
     def get(self, hike_id: str) -> Hike | None:
@@ -201,7 +236,8 @@ class HikeStore:
     def create(self, *, club_id: str, title: str, start_at: str, duration_hours: float = 6,
                meeting_point: str = "", route: str = "", difficulty: str = "Лёгкий", capacity: int = 20,
                price: str = "Бесплатно", lat: float | None = None, lon: float | None = None,
-               gear: tuple[str, ...] = (), demo: bool = False, hike_id: str | None = None) -> Hike:
+               gear: tuple[str, ...] = (), demo: bool = False, hike_id: str | None = None,
+               kind: str = "hike") -> Hike:
         if hike_id is None:
             base, n = "h" + start_at[:10].replace("-", ""), 1
             while self.get(f"{base}-{n}"):
@@ -210,10 +246,10 @@ class HikeStore:
         with self.conn:
             self.conn.execute(
                 """INSERT INTO hikes (id, club_id, title, start_at, duration_hours, meeting_point, route,
-                                      difficulty, capacity, price, lat, lon, gear, demo)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                      difficulty, capacity, price, lat, lon, gear, demo, kind)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (hike_id, club_id, title, start_at, duration_hours, meeting_point, route, difficulty,
-                 capacity, price, lat, lon, "\n".join(gear), int(demo)),
+                 capacity, price, lat, lon, "\n".join(gear), int(demo), kind),
             )
         return self.get(hike_id)
 
@@ -230,6 +266,7 @@ class HikeStore:
                 difficulty=it.get("difficulty", "Лёгкий"), capacity=it.get("capacity", 20),
                 price=it.get("price", "Бесплатно"), lat=it.get("lat"), lon=it.get("lon"),
                 gear=tuple(it.get("gear", ())), demo=bool(it.get("demo", False)),
+                kind=it.get("kind", "hike"),
             )
             added += 1
         return added
@@ -246,6 +283,46 @@ class HikeStore:
             rows = self.conn.execute("SELECT * FROM hikes").fetchall()
         return sorted((self._hike(r) for r in rows), key=lambda h: h.start)
 
+    EDITABLE = ("title", "start_at", "duration_hours", "meeting_point", "route", "difficulty",
+                "capacity", "price", "kind")
+
+    def update(self, hike_id: str, **fields) -> Hike | None:
+        """Меняет поля события. Если мест стало больше — поднимает людей из листа ожидания."""
+        fields = {k: v for k, v in fields.items() if k in self.EDITABLE}
+        if fields:
+            with self.conn:
+                self.conn.execute(f"UPDATE hikes SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",
+                                  (*fields.values(), hike_id))
+        self.promote_waitlist(hike_id)
+        return self.get(hike_id)
+
+    def promote_waitlist(self, hike_id: str) -> list["Signup"]:
+        """Переводит из листа ожидания столько человек, сколько есть свободных мест."""
+        hike = self.get(hike_id)
+        if hike is None:
+            return []
+        promoted = []
+        with self.conn:
+            going, _ = self.counts(hike_id)
+            for s in [x for x in self.signups(hike_id) if x.status == "waitlist"][:max(hike.capacity - going, 0)]:
+                self.conn.execute("UPDATE hike_signups SET status = 'going' WHERE hike_id = ? AND user_id = ?",
+                                  (hike_id, s.user_id))
+                promoted.append(self.signup_of(hike_id, s.user_id))
+        return promoted
+
+    def set_attended(self, hike_id: str, user_id: int, present: bool, at: datetime | None = None) -> bool:
+        """Отметка организатора «пришёл / не пришёл» — по ней считается явка."""
+        stamp = (at or now()).isoformat(timespec="seconds") if present else None
+        with self.conn:
+            cur = self.conn.execute(
+                "UPDATE hike_signups SET attended_at = ? WHERE hike_id = ? AND user_id = ? AND status = 'going'",
+                (stamp, hike_id, user_id))
+        return cur.rowcount > 0
+
+    def attended_count(self, hike_id: str) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM hike_signups WHERE hike_id = ? AND attended_at IS NOT NULL",
+                                 (hike_id,)).fetchone()[0]
+
     def cancel_hike(self, hike_id: str) -> bool:
         with self.conn:
             cur = self.conn.execute("UPDATE hikes SET status = 'cancelled' WHERE id = ?", (hike_id,))
@@ -260,6 +337,7 @@ class HikeStore:
             status=row["status"], src=row["src"], created_at=row["created_at"],
             checked_in=row["checked_in_at"] is not None,
             reminded_24h=bool(row["reminded_24h"]), reminded_3h=bool(row["reminded_3h"]),
+            attended=row["attended_at"] is not None,
         )
 
     def signup_of(self, hike_id: str, user_id: int) -> Signup | None:

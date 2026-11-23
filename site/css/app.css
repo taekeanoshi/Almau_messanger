@@ -419,3 +419,38 @@ details.course select,.att-row select{background:#0b0b0f;border:1px solid var(--
 .seen.on{color:var(--ok)}
 .seen.on::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;vertical-align:1px}
 .course-card[hidden]{display:none}
+
+/* ---------- клубная система: колокольчик, кабинет организатора ---------- */
+#nav-bell{position:relative;padding:8px 12px}
+#nav-bell .count,#nav-menu-btn .count{margin-left:6px}
+.notif-panel{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));right:20px;width:min(380px,calc(100vw - 40px));max-height:70vh;overflow:auto;
+  background:#0d0d13;border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.6);opacity:0;visibility:hidden;transform:translateY(-6px);transition:.15s}
+.notif-panel.open{opacity:1;visibility:visible;transform:translateY(0)}
+.notif-head{padding:14px 16px;border-bottom:1px solid var(--line);font-family:Unbounded;font-size:14px}
+.notif{display:block;padding:12px 16px;border-bottom:1px solid var(--line);color:var(--text);text-decoration:none;font-size:14px;line-height:1.4}
+.notif:last-child{border-bottom:none}.notif small{display:block;color:var(--mute);margin-top:4px;font-size:12px}
+.notif.unread{background:rgba(167,139,250,.10);border-left:3px solid var(--acc)}
+.pro-tag{font-size:11px;color:var(--acc);border:1px dashed rgba(167,139,250,.6);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.card.stat{display:flex;flex-direction:column;gap:4px}
+.card.stat b{font-family:Unbounded;font-size:30px;color:var(--acc)}.card.stat span{color:var(--mute);font-size:14px}
+.cab-event{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:18px 20px}
+.cab-event .grow{min-width:240px;display:flex;flex-direction:column;gap:6px}
+.cab-event b{font-family:Unbounded;font-size:16px}.cab-event small{color:var(--mute);font-size:13px}
+.cab-event .bar{max-width:320px}
+.cab-actions{gap:8px;flex-wrap:wrap}.cab-actions .btn.sm{margin-top:0}
+.cab-form{background:var(--panel);border:1px solid var(--acc);border-radius:20px;padding:22px;margin-top:16px;display:flex;flex-direction:column;gap:12px}
+.cab-form h3{font-size:18px}
+.cab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.cab-form label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute)}
+.cab-form input,.cab-form select,.cab-form textarea{background:#0b0b0f;border:1px solid var(--line);border-radius:12px;padding:11px 12px;color:var(--text);font:15px Manrope;color-scheme:dark}
+.cab-form textarea{min-height:80px;resize:vertical}
+.cab-form input:focus,.cab-form select:focus,.cab-form textarea:focus{outline:2px solid var(--acc);outline-offset:1px}
+.att{display:flex;align-items:center;gap:8px;font-size:14px;white-space:nowrap;cursor:pointer}
+.att input{width:20px;height:20px;accent-color:var(--acc)}
+#cab-signups .card h3{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#cab-signups .card h3 a{font:500 13px Manrope;color:var(--mute)}
+.tile .row{gap:8px;flex-wrap:wrap}.tile .row .btn.sm{margin-top:12px}
+@media(max-width:700px){.cab-event{flex-direction:column;align-items:stretch}.notif-panel{right:12px}}
+#cab-signups .roster-row small{display:block;color:var(--mute);font-size:13px}
+#cab-signups .mini-form input{flex:1;min-width:180px}
+#cab-stats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
