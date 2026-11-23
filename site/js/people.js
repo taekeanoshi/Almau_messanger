@@ -9,16 +9,25 @@ function personSub(u) {
   return [u.role_label, courseLabel(u.course), u.specialty].filter(Boolean).join(" · ");
 }
 
+const PEOPLE_PAGE = 15;
+
 function renderPeopleResults(users, query) {
   const box = $("people-results");
+  if (query !== box._query) box._limit = PEOPLE_PAGE;   // новый поиск — снова с первой порции
   if (!users.length) {
     box.innerHTML = `<div class="empty">${query ? "Никого не нашлось. Проверь написание имени." : "Пока здесь никого нет."}</div>`;
     return;
   }
-  box.innerHTML = users.map(u => `<div class="people-row"><span class="row" style="flex-wrap:nowrap;min-width:0">
+  // Длинный список (сотни людей) показываем порциями: первые PEOPLE_PAGE и кнопка «Показать ещё».
+  const shown = users.slice(0, box._limit || PEOPLE_PAGE);
+  box._users = users; box._query = query;
+  box.innerHTML = shown.map(u => `<div class="people-row"><span class="row" style="flex-wrap:nowrap;min-width:0">
       <span class="avatar">${esc(initials(u))}</span>
       <span class="grow"><b>${esc(fullName(u))}</b> ${seenBadge(u.last_seen_at)}<small>${esc(personSub(u))}</small></span></span>
-    <button type="button" class="btn sm" data-start-direct="${u.id}">Написать</button></div>`).join("");
+    <button type="button" class="btn sm" data-start-direct="${u.id}">Написать</button></div>`).join("") +
+    (users.length > shown.length
+      ? `<div class="empty">Показано ${shown.length} из ${users.length}. Введи имя в поиске или
+         <button type="button" class="btn sm ghost" data-people-more>покажи ещё</button></div>` : "");
 }
 
 function renderPeopleDialogs(dialogs) {
@@ -205,3 +214,11 @@ function initPeople() {
     reportPartner(peopleDialog.dialog_id, () => { showPeopleList(); loadPeopleResults(""); });
   });
 }
+
+// «Покажи ещё» в списке людей: добавляем следующую порцию, не перезапрашивая сервер.
+document.addEventListener("click", e => {
+  if (!e.target.closest("[data-people-more]")) return;
+  const box = $("people-results");
+  box._limit = (box._limit || PEOPLE_PAGE) + PEOPLE_PAGE;
+  renderPeopleResults(box._users || [], box._query);
+});

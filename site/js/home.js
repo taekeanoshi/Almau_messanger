@@ -23,7 +23,7 @@ function classesCard(d) {
     body = dashEmpty("Расписание появится, когда запишешься на дисциплины.") +
       `<a class="btn sm" href="#academics" data-acad-tab="catalog" style="margin-top:12px">Выбрать дисциплины</a>`;
   }
-  return `<div class="card"><h3>Пары сегодня · ${WEEKDAY_FULL[d.weekday].toLowerCase()}<a href="#academics" data-acad-tab="schedule">вся неделя →</a></h3>${body}</div>`;
+  return `<div class="card"><h3>Пары сегодня · ${WEEKDAY_FULL[d.weekday].toLowerCase()}<a href="#academics" data-acad-tab="schedule" style="white-space:nowrap">вся неделя →</a></h3>${body}</div>`;
 }
 
 function deadlinesCard(d) {
