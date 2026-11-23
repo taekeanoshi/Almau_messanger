@@ -25,6 +25,7 @@ class Event:
     host: str
     category: str
     description: str
+    until: str | None = None   # последний день ивента (ISO); прошедшие не отдаём в списке
 
 
 def _load_optional(path: Path, default):
@@ -41,7 +42,7 @@ class Content:
             for c in clubs
         ]
         self.events = [
-            Event(e["id"], e["title"], e["emoji"], e["date"], e["host"], e["category"], e["description"])
+            Event(e["id"], e["title"], e["emoji"], e["date"], e["host"], e["category"], e["description"], e.get("until"))
             for e in events
         ]
         # походы и «школа туризма» необязательны: без файлов бот работает как раньше

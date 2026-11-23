@@ -119,7 +119,8 @@ async function fetchJson(url) {
 let siteEvents = null, siteClubs = [];
 async function loadClubsAndEvents() {
   try {
-    const [clubs, events] = await Promise.all([fetchJson("data/clubs.json"), fetchJson("data/events.json")]);
+    const [clubs, allEvents] = await Promise.all([fetchJson("data/clubs.json"), fetchJson("data/events.json")]);
+    const events = upcomingEvents(allEvents);
     siteEvents = events;
     siteClubs = clubs;
     clubLogos = Object.fromEntries(clubs.filter(c => c.logo).map(c => [c.id, c.logo]));
@@ -313,8 +314,14 @@ function clubEventCard(e) {
   </article>`;
 }
 
+// Прошедшие ивенты (поле until в events.json раньше сегодняшнего дня) не показываем.
+function upcomingEvents(list) {
+  const today = new Date().toISOString().slice(0, 10);
+  return list.filter(e => !e.until || e.until >= today);
+}
+
 async function eventsList() {
-  if (!siteEvents) siteEvents = await fetchJson("data/events.json");
+  if (!siteEvents) siteEvents = upcomingEvents(await fetchJson("data/events.json"));
   return siteEvents;
 }
 

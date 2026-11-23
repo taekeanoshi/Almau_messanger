@@ -40,7 +40,7 @@ def test_clubs_and_events_served_from_backend():
             assert resp.status == 200
             assert len(await resp.json()) == len(content.clubs)
 
-            ev = content.events[0]
+            ev = next(e for e in content.events if not e.until)   # ивент без даты окончания виден всегда
             db.set_going(1, ev.id, True)
 
             resp = await client.get("/api/events")

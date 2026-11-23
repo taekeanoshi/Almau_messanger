@@ -109,7 +109,9 @@ async def get_clubs(request: web.Request) -> web.Response:
 async def get_events(request: web.Request) -> web.Response:
     content: Content = request.app["content"]
     db: Database = request.app["db"]
-    return web.json_response([_event_payload(content, db, e.id) for e in content.events])
+    today = datetime.now().date().isoformat()
+    return web.json_response([_event_payload(content, db, e.id) for e in content.events
+                              if not e.until or e.until >= today])
 
 
 async def get_event(request: web.Request) -> web.Response:
